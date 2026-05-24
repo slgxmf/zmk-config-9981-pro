@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Copyright (c) 2025 ZitaoTech
 # SPDX-License-Identifier: MIT
 
@@ -28,34 +27,3 @@ config BT_CTLR
     default BT
 
 endif # BOARD_BBP9981
-=======
-# Copyright (c) 2025 ZitaoTech
-# SPDX-License-Identifier: MIT
-
-if BOARD_BBP9981
-
-config ZMK_KEYBOARD_NAME
-    default "bbp9981"
-
-if USB_DEVICE_STACK
-
-config USB_NRFX
-    default y
-
-endif # USB_DEVICE_STACK
-
-if ZMK_BACKLIGHT
-
-config PWM
-    default y
-
-config LED_PWM
-    default y
-
-endif # ZMK_BACKLIGHT
-
-config BT_CTLR
-    default y
-
-endif # BOARD_BBP9981
->>>>>>> upstream/main

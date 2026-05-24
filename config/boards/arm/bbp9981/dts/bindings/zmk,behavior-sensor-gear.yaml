@@ -1,13 +1,20 @@
 # Copyright (c) 2025 ZitaoTech
 # SPDX-License-Identifier: MIT
 
-description: Sensor Gear Behavior (mgear/sgear)
+description: |
+  ZMK custom behavior for setting A320 touchpad mouse gear or scroll gear.
+  Accepts one integer parameter.
+
+  Example usage in keymap:
+    &mgear 5   — set mouse gear to 5
+    &sgear 3   — set scroll gear to 3
 
 compatible: "zmk,behavior-sensor-gear"
 
-include: ["one-cell.yaml"]
-
 properties:
+  "#binding-cells":
+    type: int
+    const: 1
   label:
     type: string
     required: true

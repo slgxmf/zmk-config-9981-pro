@@ -1,26 +1,12 @@
 # zmk-config-9981-pro
 This page contains zmk firmware config for 9981 keyboard with trackpad(pro version)
-<<<<<<< HEAD
 <img width="1446" height="1722" alt="image" src="https://github.com/user-attachments/assets/20568c06-c573-438d-8e5e-26394261aa20" />
-=======
-
-<p align="center">
-<img  height="1200" alt="image" src="https://github.com/user-attachments/assets/20568c06-c573-438d-8e5e-26394261aa20" />
-</p>
-
->>>>>>> upstream/main
 ### Use this repo to generate your own ZMK keymap for the 9981 Pro keyboard.  
 ## Get started  
 ```Option1```   
 **0. Register a github account if you don't have one.**  
 **1. Fork this repo.**  
-<<<<<<< HEAD
 <img width="934" height="184" alt="image" src="https://github.com/user-attachments/assets/73fbcded-25c4-4208-91d0-c07d19170656" />  
-=======
-<p align="center">
-<img height="100" alt="image" src="https://github.com/user-attachments/assets/73fbcded-25c4-4208-91d0-c07d19170656" />  
-</p>
->>>>>>> upstream/main
 
 **2. Open up `config/bbp9981.keymap` and edit the keymap to your liking.**  
 **3. After editing the keymap, choose commit changes.**  
@@ -35,13 +21,7 @@ This page contains zmk firmware config for 9981 keyboard with trackpad(pro versi
 **2. Access the [keymap editor web](https://nickcoutsos.github.io/keymap-editor/)**  
 **3. Login with your Github Account on the web**  
 **4. Choose the right repository and you can edit the keymap more intuitivly**  
-<<<<<<< HEAD
 <img width="2534" height="1336" alt="image" src="https://github.com/user-attachments/assets/50e5df6c-b703-48af-808c-8b864ba243a0" />  
-=======
-<p align="center">
-<img height="800" alt="image" src="https://github.com/user-attachments/assets/50e5df6c-b703-48af-808c-8b864ba243a0" />  
-</p>
->>>>>>> upstream/main
 **5. After editting the keymap there will be another github action compiling and you will have the firmware.zip file**  
 **6. Flash the keyboard with your new firmware.**  
 
@@ -49,9 +29,3 @@ This page contains zmk firmware config for 9981 keyboard with trackpad(pro versi
 
 ## Build your own driver
 You can change the source code under the ```/config/boards/arm/bbp9981/custom_driver```
-<<<<<<< HEAD
-=======
-
-For example if you want to change the scroll direction when capslock is activated:
-Go to this [line](https://github.com/ZitaoTech/zmk-config-9981-pro/blob/e0c119fc6a126b8af9a3b8e19102eeef02d5e725/config/boards/arm/bbp9981/custom_driver/a320_0x57.c#L201) and change ```scroll_y``` to ```-scroll_y```
->>>>>>> upstream/main
