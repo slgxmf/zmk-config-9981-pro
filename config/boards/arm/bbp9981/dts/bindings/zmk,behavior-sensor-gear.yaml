@@ -1,0 +1,17 @@
+description: Sensor gear behavior
+
+compatible: "zmk,behavior-sensor-gear"
+
+properties:
+  "#binding-cells":
+    type: int
+    required: true
+    const: 1
+  label:
+    type: string
+    required: false
+
+binding-cells:
+  - gear
+EOF
+echo "--- YAML written ---"
