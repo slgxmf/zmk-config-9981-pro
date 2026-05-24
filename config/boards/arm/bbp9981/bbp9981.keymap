@@ -182,34 +182,23 @@
      *  MACROS  (Section 6.1)
      * ============================================================== */
     macros {
-        /* Reverse-mouse macro: toggle to L_REV_M + blink RGB red */
+        /* Reverse-mouse macro: toggle to L_REV_M */
         mac_rev_mouse: mac_rev_mouse {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
-            bindings
-                = <&tog L_REV_M>
-                , <&rgb_ug RGB_EFF 0>
-                , <&rgb_ug RGB_BRI 50>
-                ;
+            bindings = <&tog L_REV_M>;
         };
-        /* Reverse-scroll macro: toggle to L_REV_S + blink RGB blue */
+        /* Reverse-scroll macro: toggle to L_REV_S */
         mac_rev_scroll: mac_rev_scroll {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
-            bindings
-                = <&tog L_REV_S>
-                , <&rgb_ug RGB_EFF 0>
-                , <&rgb_ug RGB_BRI 50>
-                ;
+            bindings = <&tog L_REV_S>;
         };
         /* Reset to normal: toggle out of any reverse layer */
         mac_reset_normal: mac_reset_normal {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
-            bindings
-                = <&to L_BASE>
-                , <&rgb_ug RGB_EFF 0>
-                ;
+            bindings = <&to L_BASE>;
         };
     };
 
