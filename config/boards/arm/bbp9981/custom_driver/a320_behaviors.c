@@ -18,6 +18,7 @@
 #include <zephyr/logging/log.h>
 #include <zmk/behavior.h>
 #include <drivers/behavior.h>
+#include <drivers/behavior.h>
 #include "a320_0x57.h"
 
 LOG_MODULE_REGISTER(a320_gear, CONFIG_A320_LOG_LEVEL);
