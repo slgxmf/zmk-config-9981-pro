@@ -198,7 +198,7 @@
             #binding-cells = <0>;
             bindings
                 = <&tog L_REV_S>
-                , <&rgb_ug RGB_CLR>
+                , <&rgb_ug RGB_EFF 0>
                 , <&rgb_ug RGB_BRI 50>
                 ;
         };
@@ -208,7 +208,7 @@
             #binding-cells = <0>;
             bindings
                 = <&to L_BASE>
-                , <&rgb_ug RGB_CLR>
+                , <&rgb_ug RGB_EFF 0>
                 ;
         };
     };
