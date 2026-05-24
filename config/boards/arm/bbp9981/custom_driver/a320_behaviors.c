@@ -35,7 +35,7 @@ struct sensor_gear_cfg {
 static int sensor_gear_binding_pressed(const struct zmk_behavior_binding *binding,
                                        struct zmk_behavior_binding_event event)
 {
-    const struct device *dev = binding->behavior_dev;
+    const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct sensor_gear_cfg *cfg = dev->config;
 
     int gear = (int)binding->param1;
