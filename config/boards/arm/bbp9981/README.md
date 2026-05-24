@@ -5,4 +5,7 @@
 west build -p -b bbp9981
 
 ```
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/main

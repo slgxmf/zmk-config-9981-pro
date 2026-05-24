@@ -1,0 +1,17 @@
+# CHANGELOG - v0.3.0
+
+## Migration & Compatibility
+- **Migrated Trackpad Drivers to ZMK v0.3.0 (Zephyr 3.5)**
+  - The workflow was updated and version v0.3.0 of zmk was fixed for the compilation
+  - Updated Avago A320 (`a320_0x57.c`) driver headers and API calls for Zephyr 3.5 compliance.
+  - Refactored includes to use new namespaced headers (e.g., `<zephyr/kernel.h>` instead of `<kernel.h>`).
+  - Validated integration with the latest ZMK Input Subsystem.
+  - Resolved `Kconfig` and `Devicetree` deprecation warnings.
+
+## Technical Improvements
+- **Maintained Feature Parity**:
+  - Preserved existing Smart Modes (Scroll via CapsLock, Precision via Ctrl).
+  - Preserved dynamic sensitivity scaling.
+- **Codebase Clean-up**:
+  - Modernized `gpio_dt_spec` usage.
+  - Ensured correct `DT_DRV_COMPAT` definitions for the new build system.
