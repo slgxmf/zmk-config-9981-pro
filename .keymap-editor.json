@@ -1,0 +1,42 @@
+{
+  "customBehaviors": [
+    {
+      "label": "鼠标灵敏度",
+      "behavior": "&mgear",
+      "bindings": [
+        {"type": "param", "label": "M-档位"}
+      ]
+    },
+    {
+      "label": "滚轴灵敏度",
+      "behavior": "&sgear",
+      "bindings": [
+        {"type": "param", "label": "S-档位"}
+      ]
+    },
+    {
+      "label": "模式3:长按锁定",
+      "behavior": "&ht_tog",
+      "bindings": [
+        {"type": "param", "label": "切换到层"},
+        {"type": "param", "label": "填NONE"}
+      ]
+    },
+    {
+      "label": "模式4:长按锁定/短按粘滞",
+      "behavior": "&sl_tog",
+      "bindings": [
+        {"type": "param", "label": "长按锁定层"},
+        {"type": "param", "label": "短按粘滞层"}
+      ]
+    },
+    {
+      "label": "模式6:长按即时/短按粘滞",
+      "behavior": "&sl_mo",
+      "bindings": [
+        {"type": "param", "label": "瞬时进入层"},
+        {"type": "param", "label": "短按粘滞层"}
+      ]
+    }
+  ]
+}

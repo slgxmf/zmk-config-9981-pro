@@ -1,0 +1,430 @@
+/*
+ * 9981-Pro — ZMK Keymap
+ * =======================
+ * 12-layer architecture with three-layer touchpad routing:
+ *   Layers 4–5 → Scroll mode
+ *   Layer  6   → Reverse mouse
+ *   Layer  7   → Reverse scroll
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/bt.h>
+#include <dt-bindings/zmk/outputs.h>
+#include <dt-bindings/zmk/mouse.h>
+#include <dt-bindings/zmk/backlight.h>
+#include <dt-bindings/zmk/ext_power.h>
+#include <dt-bindings/zmk/rgb.h>
+
+/* ==============================================================
+ *  LAYER DEFINITIONS  (Section 6.1)
+ * ---------------------------------------------------------------
+ *  L_BASE   0   Default (alphanumeric)
+ *  L_SYM    1   Symbols / numbers
+ *  L_UPPER  2   Fn / media / system
+ *  L_MEDIA  3   Media / function
+ *  L_GEAR   4   Mouse & scroll gear control  <-- touchpad → SCROLL
+ *  L_RSV_0  5   Reserved (also routes to scroll mode)
+ *  L_REV_M  6   Reverse mouse direction      <-- X/Y * -1
+ *  L_REV_S  7   Reverse scroll direction     <-- Wheel * -1
+ *  L_RSV_1  8   Reserved
+ *  L_RSV_2  9   Reserved
+ *  L_RSV_3 10   Reserved
+ *  L_RSV_4 11   Reserved (highest)
+ * ============================================================== */
+
+#define L_BASE   0
+#define L_SYM    1
+#define L_UPPER  2
+#define L_MEDIA  3
+#define L_GEAR   4
+#define L_RSV_0  5
+#define L_REV_M  6
+#define L_REV_S  7
+#define L_RSV_1  8
+#define L_RSV_2  9
+#define L_RSV_3 10
+#define L_RSV_4 11
+
+/* Convenience macro for mode-6 (hold MO / tap SL) */
+#define SL_MO(layer) &sl_mo layer layer
+
+/* ==============================================================
+ *  GLOBAL STICKY-LAYER TIMEOUT
+ * ============================================================== */
+&sl {
+    release-after-ms = <3000>;
+};
+
+/* ==============================================================
+ *  BEHAVIORS  (Section 3 & 4)
+ * ============================================================== */
+/ {
+
+    /* ---- Existing tap dances ---- */
+    behaviors {
+        td0: tap_dance_0 {
+            compatible = "zmk,behavior-tap-dance";
+            #binding-cells = <0>;
+            tapping-term-ms = <400>;
+            bindings = <&mkp LCLK>, <&bt BT_CLR>;
+        };
+    };
+
+    behaviors {
+        td_boot_out: td_boot_out {
+            compatible = "zmk,behavior-tap-dance";
+            #binding-cells = <0>;
+            tapping-term-ms = <400>;
+            bindings = <&bootloader>, <&out OUT_TOG>;
+        };
+    };
+
+    behaviors {
+        tdc_to_SYM: td_comma_to_layer {
+            compatible = "zmk,behavior-tap-dance";
+            #binding-cells = <0>;
+            tapping-term-ms = <400>;
+            bindings = <&kp SEMI>, <&to L_SYM>;
+        };
+    };
+
+    behaviors {
+        tdc_to_MEDIA: td_mute_to_layer {
+            compatible = "zmk,behavior-tap-dance";
+            #binding-cells = <0>;
+            tapping-term-ms = <400>;
+            bindings = <&kp C_MUTE>, <&to L_MEDIA>;
+        };
+    };
+
+    /* ---- Homerow mods (existing) ---- */
+    behaviors {
+        hm: homerow_mods {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            tapping-term-ms = <400>;
+            bindings = <&kp &kp>;
+        };
+    };
+
+    behaviors {
+        bhm: balanced_homerow_mods {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            flavor = "balanced";
+            tapping-term-ms = <400>;
+            bindings = <&kp>, <&kp>;
+        };
+    };
+
+    /* ---- 模式 6: 长按即时 / 短按粘滞 (existing) ---- */
+    behaviors {
+        sl_mo: behavior_sl_mo {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            flavor = "hold-preferred";
+            tapping-term-ms = <450>;
+            bindings = <&mo &sl>;          /* hold = MO, tap = SL */
+        };
+    };
+
+    behaviors {
+        sk_kp: behavior_sk_kp {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            flavor = "hold-preferred";
+            tapping-term-ms = <450>;
+            bindings = <&kp &sk>;          /* hold = kp, tap = sticky key */
+        };
+    };
+
+    /* ---- 模式 3: 长按锁定 (Hold-Tap: hold→tog, tap→NONE) ---- */
+    behaviors {
+        ht_tog: behavior_ht_tog {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            flavor = "hold-preferred";
+            tapping-term-ms = <450>;
+            bindings = <&tog &kp>;         /* hold = toggle layer, tap = NONE (param2=0) */
+        };
+    };
+
+    /* ---- 模式 4: 长按锁定 + 粘滞 (Hold-Tap: hold→tog, tap→sl) ---- */
+    behaviors {
+        sl_tog: behavior_sl_tog {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            flavor = "hold-preferred";
+            tapping-term-ms = <450>;
+            bindings = <&tog &sl>;         /* hold = toggle, tap = sticky layer */
+        };
+    };
+
+    /* ---- 传感器档位行为: &mgear / &sgear (Section 3.2) ---- */
+    /* DT nodes must match "zmk,behavior-sensor-gear" compatible */
+    behaviors {
+        mgear: mgear {
+            compatible = "zmk,behavior-sensor-gear";
+            #binding-cells = <1>;
+            label = "MGEAR";
+        };
+        sgear: sgear {
+            compatible = "zmk,behavior-sensor-gear";
+            #binding-cells = <1>;
+            label = "SGEAR";
+        };
+    };
+
+    /* ==============================================================
+     *  MACROS  (Section 6.1)
+     * ============================================================== */
+    macros {
+        /* Reverse-mouse macro: toggle to L_REV_M + blink RGB red */
+        mac_rev_mouse: mac_rev_mouse {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings
+                = <&tog L_REV_M>
+                , <&rgb_ug RGB_BRI (RGB_BRI + 50)>
+                , <&rgb_ug RGB_SPD 5>
+                ;
+        };
+        /* Reverse-scroll macro: toggle to L_REV_S + blink RGB blue */
+        mac_rev_scroll: mac_rev_scroll {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings
+                = <&tog L_REV_S>
+                , <&rgb_ug RGB_CLR>
+                , <&rgb_ug RGB_BRI (RGB_BRI + 50)>
+                ;
+        };
+        /* Reset to normal: toggle out of any reverse layer */
+        mac_reset_normal: mac_reset_normal {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings
+                = <&to L_BASE>
+                , <&rgb_ug RGB_CLR>
+                ;
+        };
+    };
+
+    /* ==============================================================
+     *  COMBOS  (Section 6.1 — template)
+     * ============================================================== */
+    combos {
+        compatible = "zmk,combos";
+
+        /* Combo templates — adjust key positions as needed */
+        /* Example: Q+W → toggle to layer 4 (gear control) */
+        /*
+        combo_gear {
+            timeout-ms = <50>;
+            key-positions = <0 1>;   // Q + W
+            bindings = <&tog L_GEAR>;
+        };
+        */
+    };
+
+    /* ==============================================================
+     *  KEYMAP  —  12 layers
+     * ============================================================== */
+    keymap {
+        compatible = "zmk,keymap";
+
+        /* -----------------------------------------------------------------
+         *  Layer 0  —  L_BASE  (Default alphanumeric)
+         *
+         *  Caps Lock, ESC, Tab → 模式 4 (sl_tog) / 模式 6 (sl_mo)
+         *  as starting examples (Section 6.2).
+         * ----------------------------------------------------------------- */
+        default_layer {
+            bindings = <
+
+                /* Shoulder keys */
+                &mkp LCLK                                                          &mkp RCLK
+
+                /* Top function row: Call, BB Key, Trackpad, Back, Endcall */
+                &kp CLCK             &kp LGUI              &mkp LCLK              &ht_tog L_REV_M 0            &mt F4 TAB
+
+                /* Q row */
+                &kp Q      &kp W     &kp E      &kp R     &kp T                    &kp Y       &kp U       &kp I       &kp O       &kp P
+
+                /* A row */
+                &kp A      &kp S     &kp D      &kp F     &kp G                    &kp H       &kp J       &kp K       &kp L       &kp BSPC
+
+                /* Z row — ESC→sl_tog, Caps→sl_tog, Tab→sl_mo as examples */
+                &kp LSHFT  &kp Z     &kp X      &kp C     &kp V                    &kp B       &kp N       &kp M       &tdc_to_SYM &kp ENTER
+
+                /* Bottom row — Caps=sl_tog (模式 4), Tab removed, SYM=sl_mo */
+                &sl_tog L_UPPER L_SYM   &kp LALT              &kp SPACE             &sl_mo L_SYM L_SYM              &sl_mo L_UPPER L_UPPER
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 1  —  L_SYM  (Symbols)
+         *
+         *  Numbers and symbols, volume controls on shoulders.
+         * ----------------------------------------------------------------- */
+        sym_layer {
+            bindings = <
+                &kp C_VOL_UP                                                      &kp C_VOL_DN
+                &kp PSCRN             &kp C_AC_SEARCH           &mkp LCLK           &kp F5                            &kp F12
+                &kp HASH   &kp N1     &kp N2      &kp N3       &mt LBKT LPAR      &mt RBKT RPAR      &kp UNDER       &kp MINUS       &kp PLUS        &kp AT
+                &kp STAR   &kp N4     &kp N5      &kp N6       &kp SLASH           &kp COLON          &kp SEMI        &kp APOS        &kp DQT         &kp DEL
+                &kp LSHFT  &kp N7     &kp N8      &kp N9       &kp QMARK           &kp EXCL           &kp COMMA       &kp DOT         &tdc_to_MEDIA   &kp ENTER
+                &kp LCTRL             &kp N0                                       &kp SPACE                          &to L_BASE                      &sl_mo L_UPPER L_UPPER
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 2  —  L_UPPER  (Fn / System / Media)
+         * ----------------------------------------------------------------- */
+        upper_layer {
+            bindings = <
+                &msc SCRL_UP                                                      &msc SCRL_DOWN
+                &bt BT_SEL 0          &bt BT_SEL 1                                  &td0                              &bt BT_SEL 2                    &bt BT_SEL 3
+                &none       &kp UP    &kp C_EJECT   &sys_reset                     &ext_power EP_TOG   &none         &kp LT          &kp GT          &kp PIPE        &kp KP_EQUAL
+                &kp LEFT    &kp DOWN  &kp RIGHT     &none                          &kp BSLH            &kp AMPS      &kp LBRC        &kp RBRC        &kp CARET       &kp BSPC
+                &kp LSHFT   &none     &none         &rgb_ug RGB_BRD               &bl BL_DEC           &rgb_ug RGB_TOG &bl BL_INC     &rgb_ug RGB_BRI &td_boot_out    &kp ENTER
+                &kp LCTRL             &kp LALT                                                              &kp SPACE                         &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 3  —  L_MEDIA  (Media / function)
+         * ----------------------------------------------------------------- */
+        media_layer {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &to L_BASE      &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 4  —  L_GEAR  (Mouse & scroll gear control)
+         *
+         *  Touchpad routed to SCROLL mode in this layer.
+         *
+         *  sgear bindings (Section 6.2):
+         *    W → sgear 1, E → sgear 2, R → sgear 3, S → sgear 4,
+         *    D → sgear 5, F → sgear 6, X → sgear 7, C → sgear 8, V → sgear 9
+         *
+         *  mgear bindings (Section 6.2):
+         *    T → mgear 1, Y → mgear 2, U → mgear 3, F → mgear 4,
+         *    G → mgear 5, H → mgear 6, J → mgear 7, B → mgear 8,
+         *    N → mgear 9, M → mgear 10
+         * ----------------------------------------------------------------- */
+        gear_layer {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &sgear 1  &sgear 2    &sgear 3      &mgear 1          &mgear 2          &mgear 3        &mgear 4        &mgear 5        &none
+                &none       &sgear 4  &sgear 5    &sgear 6      &mgear 6          &mgear 7          &mgear 8        &mgear 9        &mgear 10       &none
+                &none       &sgear 7  &sgear 8    &sgear 9      &none             &none             &none           &none           &to L_BASE      &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 5  —  L_RSV_0  (Reserved, routes to scroll mode)
+         * ----------------------------------------------------------------- */
+        layer_5 {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &to L_BASE      &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 6  —  L_REV_M  (Reverse mouse)
+         *
+         *  Touchpad X/Y inverted. Use mac_reset_normal to exit cleanly.
+         * ----------------------------------------------------------------- */
+        rev_mouse_layer {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &mac_reset_normal &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 7  —  L_REV_S  (Reverse scroll)
+         *
+         *  Touchpad wheel inverted. Use mac_reset_normal to exit cleanly.
+         * ----------------------------------------------------------------- */
+        rev_scroll_layer {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &mac_reset_normal &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layers 8–11  —  Reserved  (L_RSV_1 .. L_RSV_4)
+         * ----------------------------------------------------------------- */
+        layer_8 {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &to L_BASE      &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        layer_9 {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &to L_BASE      &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        layer_10 {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &to L_BASE      &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+
+        layer_11 {
+            bindings = <
+                &none                                                             &none
+                &none                 &none                      &none             &none                             &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
+                &none       &none     &none        &none         &none             &none             &none           &none           &to L_BASE      &none
+                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+            >;
+        };
+    };
+};
