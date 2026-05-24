@@ -188,8 +188,8 @@
             #binding-cells = <0>;
             bindings
                 = <&tog L_REV_M>
-                , <&rgb_ug RGB_BRI (RGB_BRI + 50)>
-                , <&rgb_ug RGB_SPD 5>
+                , <&rgb_ug RGB_EFF 0>
+                , <&rgb_ug RGB_BRI 50>
                 ;
         };
         /* Reverse-scroll macro: toggle to L_REV_S + blink RGB blue */
@@ -199,7 +199,7 @@
             bindings
                 = <&tog L_REV_S>
                 , <&rgb_ug RGB_CLR>
-                , <&rgb_ug RGB_BRI (RGB_BRI + 50)>
+                , <&rgb_ug RGB_BRI 50>
                 ;
         };
         /* Reset to normal: toggle out of any reverse layer */
