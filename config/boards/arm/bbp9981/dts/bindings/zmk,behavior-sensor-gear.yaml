@@ -5,7 +5,7 @@ description: Sensor Gear Behavior (mgear/sgear)
 
 compatible: "zmk,behavior-sensor-gear"
 
-include: one-cell.yaml
+include: ["one-cell.yaml"]
 
 properties:
   label:
