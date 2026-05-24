@@ -13,5 +13,3 @@ properties:
 
 binding-cells:
   - gear
-EOF
-echo "--- YAML written ---"
