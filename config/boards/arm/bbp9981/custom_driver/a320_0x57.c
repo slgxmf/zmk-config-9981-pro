@@ -21,6 +21,7 @@
 #include <zephyr/logging/log.h>
 
 #include <stdlib.h>
+#include <zmk/behavior.h>
 #include <zmk/keymap.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include "a320_0x57.h"
