@@ -35,8 +35,8 @@ LOG_MODULE_REGISTER(a320, CONFIG_A320_LOG_LEVEL);
  *     Replaced with two independent global gear variables.
  * ================================================================== */
 
-static int current_mouse_gear  = 5;  /* range 1–10 */
-static int current_scroll_gear = 5;  /* range 1–9  */
+static int current_mouse_gear  = 2;  /* range 1–10 */
+static int current_scroll_gear = 2;  /* range 1–9  */
 
 /* Exposed for a320_behaviors.c (header declares these) */
 int *zmk_a320_mouse_gear_ptr(void)  { return &current_mouse_gear; }
