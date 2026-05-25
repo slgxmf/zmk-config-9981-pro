@@ -120,7 +120,18 @@
         };
     };
 
-    /* ---- 模式 6: 长按即时 / 短按粘滞 (existing) ---- */
+    /* ---- Hold-Tap: bracket/paren (hold=[, tap=() ---- */
+    behaviors {
+        ht_bp: behavior_ht_bp {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            flavor = "hold-preferred";
+            tapping-term-ms = <200>;
+            bindings = <&kp &kp>;          /* hold = kp, tap = kp */
+        };
+    };
+
+    /* ---- 模式 6: 长按即时 / 短按粘滞 ---- */
     behaviors {
         sl_mo: behavior_sl_mo {
             compatible = "zmk,behavior-hold-tap";
@@ -131,13 +142,14 @@
         };
     };
 
+    /* ---- Sticky key (hold=press, tap=sticky modifier) ---- */
     behaviors {
         sk_kp: behavior_sk_kp {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
             flavor = "hold-preferred";
             tapping-term-ms = <450>;
-            bindings = <&kp &sk>;          /* hold = kp, tap = sticky key */
+            bindings = <&kp &sk>;          /* hold = normal key, tap = sticky modifier */
         };
     };
 
@@ -243,8 +255,8 @@
                 /* Q row */
                 &kp Q      &kp W     &kp E      &kp R     &kp T                    &kp Y       &kp U       &kp I       &kp O       &kp P
 
-                /* A row */
-                &kp A      &kp S     &kp D      &kp F     &kp G                    &kp H       &kp J       &kp K       &kp L       &kp BSPC
+                /* A row — home row mods */
+                &bhm LCTRL A &bhm LSHFT S &bhm LALT D &bhm LGUI F &kp G          &kp H      &bhm RGUI J &bhm RALT K &bhm RCTRL L  &kp BSPC
 
                 /* Z row — ESC→sl_tog, Caps→sl_tog, Tab→sl_mo as examples */
                 &kp LSHFT  &kp Z     &kp X      &kp C     &kp V                    &kp B       &kp N       &kp M       &tdc_to_SYM &kp ENTER
@@ -263,7 +275,7 @@
             bindings = <
                 &kp C_VOL_UP                                                      &kp C_VOL_DN
                 &kp PSCRN             &kp C_AC_SEARCH           &mkp LCLK           &kp F5                            &kp F12
-                &kp HASH   &kp N1     &kp N2      &kp N3       &mt LBKT LPAR      &mt RBKT RPAR      &kp UNDER       &kp MINUS       &kp PLUS        &kp AT
+                &kp HASH   &kp N1     &kp N2      &kp N3       &ht_bp LBKT LPAR   &ht_bp RBKT RPAR      &kp UNDER       &kp MINUS       &kp PLUS        &kp AT
                 &kp STAR   &kp N4     &kp N5      &kp N6       &kp SLASH           &kp COLON          &kp SEMI        &kp APOS        &kp DQT         &kp DEL
                 &kp LSHFT  &kp N7     &kp N8      &kp N9       &kp QMARK           &kp EXCL           &kp COMMA       &kp DOT         &tdc_to_MEDIA   &kp ENTER
                 &kp LCTRL             &kp N0                                       &kp SPACE                          &to L_BASE                      &sl_mo L_UPPER L_UPPER

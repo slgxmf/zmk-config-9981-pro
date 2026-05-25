@@ -319,6 +319,20 @@
       ]
     },
     {
+      "label": "长按[(短按(",
+      "behavior": "&ht_bp",
+      "bindings": [
+        {
+          "type": "param",
+          "label": "长按键码"
+        },
+        {
+          "type": "param",
+          "label": "短按键码"
+        }
+      ]
+    },
+    {
       "label": "模式3:长按锁定",
       "behavior": "&ht_tog",
       "bindings": [
