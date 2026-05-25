@@ -115,7 +115,7 @@ static void a320_poll_work_handler(struct k_work *work)
         /* ---- Query current active layer (Section 2.3) ---- */
         uint8_t active_layer = zmk_keymap_highest_layer_active();
 
-        if (active_layer == 4 || active_layer == 5) {
+        if (active_layer == 4) {
 
             /* ==============================================
              *  SCROLL MODE  —  gear-based threshold
@@ -150,7 +150,7 @@ static void a320_poll_work_handler(struct k_work *work)
             }
             touched = true;
 
-        } else if (active_layer == 6) {
+        } else if (active_layer == 8) {
 
             /* ==============================================
              *  REVERSE MOUSE  —  X/Y inverted
