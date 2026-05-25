@@ -19,14 +19,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <behaviors.dtsi>
-#include <dt-bindings/zmk/keys.h>
-#include <dt-bindings/zmk/bt.h>
-#include <dt-bindings/zmk/outputs.h>
 #include <dt-bindings/zmk/mouse.h>
-#include <dt-bindings/zmk/backlight.h>
-#include <dt-bindings/zmk/ext_power.h>
-#include <dt-bindings/zmk/rgb.h>
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/bt.h>
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/outputs.h>
+#include <dt-bindings/zmk/pointing.h>
 
 /* ==============================================================
  *  LAYER DEFINITIONS
@@ -47,21 +45,22 @@
 #define L_RSV12 12
 
 /* Convenience macro for mode-6 (hold MO / tap SL) */
+
 #define SL_MO(layer) &sl_mo layer layer
 
 /* ==============================================================
  *  GLOBAL STICKY-LAYER TIMEOUT
  * ============================================================== */
-&sl {
-    release-after-ms = <3000>;
-};
+
+&sl { release-after-ms = <3000>; };
 
 /* ==============================================================
  *  BEHAVIORS
  * ============================================================== */
-/ {
 
+/ {
     /* ---- Tap dances ---- */
+
     behaviors {
         td0: tap_dance_0 {
             compatible = "zmk,behavior-tap-dance";
@@ -99,6 +98,7 @@
     };
 
     /* ---- Homerow mods (retained but not used in L_BASE) ---- */
+
     behaviors {
         hm: homerow_mods {
             compatible = "zmk,behavior-hold-tap";
@@ -119,6 +119,7 @@
     };
 
     /* ---- Hold-Tap: bracket/paren (hold=[, tap=() ---- */
+
     behaviors {
         ht_bp: behavior_ht_bp {
             compatible = "zmk,behavior-hold-tap";
@@ -130,6 +131,7 @@
     };
 
     /* ---- Mode 6: hold = MO, tap = SL ---- */
+
     behaviors {
         sl_mo: behavior_sl_mo {
             compatible = "zmk,behavior-hold-tap";
@@ -141,6 +143,7 @@
     };
 
     /* ---- Sticky key (hold = press, tap = sticky modifier) ---- */
+
     behaviors {
         sk_kp: behavior_sk_kp {
             compatible = "zmk,behavior-hold-tap";
@@ -152,6 +155,7 @@
     };
 
     /* ---- Mode 3: hold = toggle layer, tap = NONE ---- */
+
     behaviors {
         ht_tog: behavior_ht_tog {
             compatible = "zmk,behavior-hold-tap";
@@ -163,6 +167,7 @@
     };
 
     /* ---- Mode 4: hold = toggle, tap = sticky layer ---- */
+
     behaviors {
         sl_tog: behavior_sl_tog {
             compatible = "zmk,behavior-hold-tap";
@@ -174,12 +179,14 @@
     };
 
     /* ---- Sensor gear behaviors: &mgear / &sgear ---- */
+
     behaviors {
         mgear: mgear {
             compatible = "zmk,behavior-sensor-gear";
             #binding-cells = <1>;
             label = "MGEAR";
         };
+
         sgear: sgear {
             compatible = "zmk,behavior-sensor-gear";
             #binding-cells = <1>;
@@ -190,20 +197,26 @@
     /* ==============================================================
      *  MACROS
      * ============================================================== */
+
     macros {
         /* Reverse-mouse macro: toggle to L_REV_M */
+
         mac_rev_mouse: mac_rev_mouse {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
             bindings = <&tog L_REV_M>;
         };
+
         /* Reverse-scroll macro: toggle to L_REV_S */
+
         mac_rev_scroll: mac_rev_scroll {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
             bindings = <&tog L_REV_S>;
         };
+
         /* Reset to normal: toggle out of any reverse layer */
+
         mac_reset_normal: mac_reset_normal {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
@@ -214,6 +227,7 @@
     /* ==============================================================
      *  COMBOS
      * ============================================================== */
+
     combos {
         compatible = "zmk,combos";
 
@@ -230,6 +244,7 @@
     /* ==============================================================
      *  KEYMAP  —  13 layers (0–12)
      * ============================================================== */
+
     keymap {
         compatible = "zmk,keymap";
 
@@ -242,25 +257,15 @@
          *  A/S/D/F/J/K/L are plain &kp, NOT hold-tap.
          *  Bottom row: LCTRL, LALT, SPACE, sl_mo SYM, sl_mo BT
          * ----------------------------------------------------------------- */
+
         default_layer {
             bindings = <
-                /* Shoulder: left=LCLK, right=RCLK */
-                &mkp LCLK                                                          &mkp RCLK
-
-                /* Row 2: Call, BB Key, Trackpad, Reverse, Tab */
-                &mo L_GEAR           &kp LGUI              &mkp LCLK              &mo L_RSV5                         &mo L_SHORT
-
-                /* Q row (plain letters) */
-                &kp Q      &kp W     &kp E      &kp R     &kp T                    &kp Y       &kp U       &kp I       &kp O       &kp P
-
-                /* A row (plain keys — no hold-tap on A/S/D/F/J/K/L) */
-                &kp A      &kp S     &kp D      &kp F     &kp G                    &kp H       &kp J       &kp K       &kp L       &kp BSPC
-
-                /* Z row */
-                &kp Z      &kp X     &kp C      &kp V     &kp B                    &kp N       &kp M       &kp COMMA   &kp DOT     &kp ENTER
-
-                /* Bottom row: LCTRL, LALT, SPACE, sl_mo SYM, sl_mo BT */
-                &kp LCTRL             &kp LALT              &kp SPACE             &sl_mo L_SYM L_SYM                &sl_mo L_BT L_BT
+&mkp LCLK       &mkp RCLK
+&mo L_GEAR      &kp LGUI   &mkp LCLK  &mo L_RSV5  &mo L_SHORT
+&kp Q           &kp W      &kp E      &kp R       &kp T        &kp Y        &kp U               &kp I             &kp O    &kp P
+&kp A           &kp S      &kp D      &kp F       &kp G        &kp H        &kp J               &kp K             &kp L    &kp BSPC
+&kp LEFT_SHIFT  &kp Z      &kp X      &kp C       &kp V        &kp B        &kp N               &kp M             &kp DOT  &kp ENTER
+                           &kp LCTRL              &kp LALT     &kp SPACE    &sl_mo L_SYM L_SYM  &sl_mo L_BT L_BT
             >;
         };
 
@@ -270,19 +275,15 @@
          *  Shoulders: volume up/down
          *  Bottom: LCTRL, N0, SPACE, to BASE, sl_mo BT
          * ----------------------------------------------------------------- */
+
         sym_layer {
             bindings = <
-                &kp C_VOL_UP                                                      &kp C_VOL_DN
-
-                &kp PSCRN             &kp C_AC_SEARCH           &mkp LCLK          &kp F5                            &kp F12
-
-                &kp HASH   &kp N1     &kp N2      &kp N3       &ht_bp LBKT LPAR   &ht_bp RBKT RPAR      &kp UNDER     &kp MINUS     &kp PLUS      &kp AT
-
-                &kp STAR   &kp N4     &kp N5      &kp N6       &kp SLASH           &kp COLON          &kp SEMI       &kp APOS      &kp DQT       &kp DEL
-
-                &kp LSHFT  &kp N7     &kp N8      &kp N9       &kp QMARK           &kp EXCL           &kp COMMA      &tdc_to_SYM   &kp DOT       &kp ENTER
-
-                &kp LCTRL             &kp N0                                       &kp SPACE                          &to L_BASE                      &sl_mo L_BT L_BT
+&kp C_VOL_UP  &kp C_VOL_DN
+&kp PSCRN     &kp C_AC_SEARCH  &mkp LCLK  &kp F5  &kp F12
+&kp HASH      &kp N1           &kp N2     &kp N3  &ht_bp LBKT LPAR  &ht_bp RBKT RPAR    &kp UNDER   &kp MINUS         &kp PLUS  &kp AT
+&kp STAR      &kp N4           &kp N5     &kp N6  &kp SLASH         &kp COLON           &kp SEMI    &kp APOS          &kp DQT   &kp DEL
+&kp LSHFT     &kp N7           &kp N8     &kp N9  &kp QMARK         &kp EXCL            &kp COMMA   &tdc_to_SYM       &kp DOT   &kp ENTER
+                               &kp LCTRL          &kp N0            &kp SPACE           &to L_BASE  &sl_mo L_BT L_BT
             >;
         };
 
@@ -291,38 +292,30 @@
          *
          *  All keys &none except row2 (BT selects) and bottom (space=to BASE).
          * ----------------------------------------------------------------- */
+
         bt_layer {
             bindings = <
-                &none                                                             &none
-
-                &bt BT_SEL 0          &bt BT_SEL 1              &td0              &bt BT_SEL 3                      &bt BT_SEL 4
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none         &none
+&bt BT_SEL 0  &bt BT_SEL 1  &td0   &bt BT_SEL 3  &bt BT_SEL 4
+&none         &none         &none  &none         &none         &none        &none       &none  &none  &none
+&none         &none         &none  &none         &none         &none        &none       &none  &none  &none
+&none         &none         &none  &none         &none         &none        &none       &none  &none  &none
+                            &none                &none         &kp SPACE    &to L_BASE  &none
             >;
         };
 
         /* -----------------------------------------------------------------
          *  Layer 3  —  L_MEDIA  (Reserved)
          * ----------------------------------------------------------------- */
+
         media_layer {
             bindings = <
-                &none                                                             &none
-
-                &none                 &none                      &none             &none                             &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+              &none         &none  &kp SPACE    &to L_BASE  &none
             >;
         };
 
@@ -332,38 +325,30 @@
          *  sgear: W=1, E=2, R=3, S=4, D=5, F=6, X=7, C=8, V=9
          *  mgear: T=1, Y=2, U=3, I=4, O=5, G=6, H=7, J=8, K=9, L=10
          * ----------------------------------------------------------------- */
+
         gear_layer {
             bindings = <
-                &none                                                             &none
-
-                &none                 &none                      &none             &to L_REV_S                       &to L_REV_M
-
-                &none       &sgear 1  &sgear 2    &sgear 3      &mgear 1          &mgear 2          &mgear 3        &mgear 4        &mgear 5        &none
-
-                &none       &sgear 4  &sgear 5    &sgear 6      &mgear 6          &mgear 7          &mgear 8        &mgear 9        &mgear 10       &none
-
-                &none       &sgear 7  &sgear 8    &sgear 9      &none             &none             &none           &none           &none           &none
-
-                &kp LCTRL             &kp LALT                                      &to L_BASE                        &none                           &none
+&none  &none
+&none  &none     &none      &to L_REV_S  &to L_REV_M
+&none  &sgear 1  &sgear 2   &sgear 3     &mgear 1     &mgear 2      &mgear 3  &mgear 4  &mgear 5   &none
+&none  &sgear 4  &sgear 5   &sgear 6     &mgear 6     &mgear 7      &mgear 8  &mgear 9  &mgear 10  &none
+&none  &sgear 7  &sgear 8   &sgear 9     &none        &none         &none     &none     &none      &none
+                 &kp LCTRL               &kp LALT     &to L_BASE    &none     &none
             >;
         };
 
         /* -----------------------------------------------------------------
          *  Layer 5  —  L_RSV5  (Reserved — routes)
          * ----------------------------------------------------------------- */
+
         layer_5 {
             bindings = <
-                &none                                                             &none
-
-                &to L_RSV9            &none                      &none             &none                             &to L_RSV10
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none       &none
+&to L_RSV9  &none  &none  &none  &to L_RSV10
+&none       &none  &none  &none  &none        &none        &none       &none  &none  &none
+&none       &none  &none  &none  &none        &none        &none       &none  &none  &none
+&none       &none  &none  &none  &none        &none        &none       &none  &none  &none
+                   &none         &none        &kp SPACE    &to L_BASE  &none
             >;
         };
 
@@ -373,19 +358,15 @@
          *  Shoulder+Q+second-row routing to reserved layers,
          *  ESC on Q, TAB on bottom.
          * ----------------------------------------------------------------- */
+
         short_layer {
             bindings = <
-                &none                                                             &none
-
-                &to L_RSV11           &none                      &none             &none                             &to L_RSV12
-
-                &kp ESC    &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-
-                &none                 &none                                        &kp TAB                             &none                           &none
+&none        &none
+&to L_RSV11  &none  &none  &none  &to L_RSV12
+&kp ESC      &none  &none  &none  &none        &none      &none  &none  &none  &none
+&none        &none  &none  &none  &none        &none      &none  &none  &none  &none
+&none        &none  &none  &none  &none        &none      &none  &none  &none  &none
+                    &none         &none        &kp TAB    &none  &none
             >;
         };
 
@@ -394,14 +375,15 @@
          *
          *  Touchpad wheel inverted. All keys &none, space=to BASE.
          * ----------------------------------------------------------------- */
+
         rev_scroll_layer {
             bindings = <
-                &none                                                             &none
-                &none                 &none                      &none             &none                             &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none    &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none    &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none    &none       &none  &none  &none
+              &none         &none  &to 0    &to L_BASE  &none
             >;
         };
 
@@ -410,70 +392,75 @@
          *
          *  Touchpad X/Y inverted. All keys &none, space=to BASE.
          * ----------------------------------------------------------------- */
+
         rev_mouse_layer {
             bindings = <
-                &none                                                             &none
-                &none                 &none                      &none             &none                             &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none    &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none    &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none    &none       &none  &none  &none
+              &none         &none  &to 0    &to L_BASE  &none
             >;
         };
 
         /* -----------------------------------------------------------------
          *  Layer 9  —  L_RSV9  (Reserved)
          * ----------------------------------------------------------------- */
+
         layer_9 {
             bindings = <
-                &none                                                             &none
-                &none                 &none                      &none             &none                             &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+              &none         &none  &kp SPACE    &to L_BASE  &none
             >;
         };
 
         /* -----------------------------------------------------------------
          *  Layer 10  —  L_RSV10  (Reserved)
          * ----------------------------------------------------------------- */
+
         layer_10 {
             bindings = <
-                &none                                                             &none
-                &none                 &none                      &none             &none                             &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+              &none         &none  &kp SPACE    &to L_BASE  &none
             >;
         };
 
         /* -----------------------------------------------------------------
          *  Layer 11  —  L_RSV11  (Reserved)
          * ----------------------------------------------------------------- */
+
         layer_11 {
             bindings = <
-                &none                                                             &none
-                &none                 &none                      &none             &none                             &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+              &none         &none  &kp SPACE    &to L_BASE  &none
             >;
         };
 
         /* -----------------------------------------------------------------
          *  Layer 12  —  L_RSV12  (Reserved)
          * ----------------------------------------------------------------- */
+
         layer_12 {
             bindings = <
-                &none                                                             &none
-                &none                 &none                      &none             &none                             &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none                 &none                                        &kp SPACE                           &to L_BASE                      &none
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none        &none       &none  &none  &none
+              &none         &none  &kp SPACE    &to L_BASE  &none
             >;
         };
     };
