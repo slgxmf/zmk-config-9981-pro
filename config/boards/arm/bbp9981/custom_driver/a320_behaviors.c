@@ -82,7 +82,7 @@ static int sensor_gear_init_1(const struct device *dev)
         .max_val = _max,                                                                       \
     };                                                                                         \
     DEVICE_DT_INST_DEFINE(n, _init_fn, NULL, &sensor_gear_data_##n, &sensor_gear_cfg_##n,       \
-                          POST_KERNEL, CONFIG_INPUT_A320_INIT_PRIORITY + 1,                    \
+                          POST_KERNEL, CONFIG_INPUT_A320_INIT_PRIORITY,                    \
                           &sensor_gear_api);
 
 SENSOR_GEAR_INST(0, sensor_gear_init_0, 1, 10)
