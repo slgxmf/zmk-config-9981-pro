@@ -257,7 +257,7 @@
                 &mkp LCLK                                                          &mkp RCLK
 
                 /* Row 2: Call, BB Key, Trackpad, Reverse, Tab */
-                &mo L_GEAR           &kp LGUI              &mkp LCLK              &mo L_RSV5                         &ht_mo_kp L_SHORT TAB
+                &mo L_GEAR           &kp LGUI              &mkp LCLK              &mo L_RSV5                         &mo L_SHORT
 
                 /* Q row (plain letters) */
                 &kp Q      &kp W     &kp E      &kp R     &kp T                    &kp Y       &kp U       &kp I       &kp O       &kp P
