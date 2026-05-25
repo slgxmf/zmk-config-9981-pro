@@ -4,7 +4,7 @@
  *   &mgear  —  set current_mouse_gear  (range 1–10)
  *   &sgear  —  set current_scroll_gear (range 1–9)
  *
- * Uses DEVICE_DT_INST_DEFINE so Zephyr's device model handles init.
+ * Uses BEHAVIOR_DT_INST_DEFINE so Zephyr's behavior system registers &mgear / &sgear.
  * .target is assigned at init time (not static) because the function
  * call result is not a compile-time constant in C99.
  *
@@ -81,9 +81,9 @@ static int sensor_gear_init_1(const struct device *dev)
         .min_val = _min,                                                                       \
         .max_val = _max,                                                                       \
     };                                                                                         \
-    DEVICE_DT_INST_DEFINE(n, _init_fn, NULL, &sensor_gear_data_##n, &sensor_gear_cfg_##n,       \
-                          POST_KERNEL, CONFIG_INPUT_A320_INIT_PRIORITY,                    \
-                          &sensor_gear_api);
+    BEHAVIOR_DT_INST_DEFINE(n, _init_fn, NULL, &sensor_gear_data_##n, &sensor_gear_cfg_##n,       \
+                             POST_KERNEL, CONFIG_INPUT_A320_INIT_PRIORITY,                    \
+                             &sensor_gear_api);
 
 SENSOR_GEAR_INST(0, sensor_gear_init_0, 1, 10)
 SENSOR_GEAR_INST(1, sensor_gear_init_1, 1, 9)
