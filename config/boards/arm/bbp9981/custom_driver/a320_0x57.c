@@ -92,8 +92,9 @@ static inline int clamp_int(int val, int lo, int hi)
 /* Scroll threshold: gear 1→9, gear 9→1  (higher gear = more responsive) */
 static inline uint8_t scroll_gear_threshold(int gear)
 {
-    int t = 10 - clamp_int(gear, 1, 9);
-    return (uint8_t)t;
+    /* Wider gear range: gear 9 ≈ 20× faster than gear 1 */
+    int t = 11 - clamp_int(gear, 1, 9);
+    return (uint8_t)(t * t + t + 2);
 }
 
 static void a320_poll_work_handler(struct k_work *work)
@@ -161,7 +162,7 @@ static void a320_poll_work_handler(struct k_work *work)
             if (max_raw <= 2) {
                 factor = 1.0f;
             } else {
-                float base  = 0.1f + (current_mouse_gear * 0.3f);
+                float base  = 0.02f + (current_mouse_gear * current_mouse_gear * 0.03f);
                 float accel = 1.0f + ((max_raw - 2) * 0.05f);
                 if (accel > 2.5f) accel = 2.5f;
                 factor = base * accel;
@@ -219,7 +220,7 @@ static void a320_poll_work_handler(struct k_work *work)
                 factor = 1.0f;
             } else {
                 /* Dynamic acceleration */
-                float base  = 0.1f + (current_mouse_gear * 0.3f);
+                float base  = 0.02f + (current_mouse_gear * current_mouse_gear * 0.03f);
                 float accel = 1.0f + ((max_raw - 2) * 0.05f);
                 if (accel > 2.5f) accel = 2.5f;
                 factor = base * accel;
