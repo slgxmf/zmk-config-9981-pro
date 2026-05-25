@@ -39,8 +39,16 @@ static int sensor_gear_binding_pressed(const struct zmk_behavior_binding *bindin
                                        struct zmk_behavior_binding_event event)
 {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
+    if (!dev) {
+        LOG_ERR("sensor_gear: failed to resolve '%s'", log_strdup(binding->behavior_dev));
+        return ZMK_BEHAVIOR_OPAQUE;
+    }
     const struct sensor_gear_cfg *cfg = dev->config;
     struct sensor_gear_data *data = dev->data;
+    if (!cfg || !data) {
+        LOG_ERR("sensor_gear: null config/data for '%s'", log_strdup(binding->behavior_dev));
+        return ZMK_BEHAVIOR_OPAQUE;
+    }
 
     int gear = (int)binding->param1;
     if (gear < cfg->min_val) gear = cfg->min_val;
