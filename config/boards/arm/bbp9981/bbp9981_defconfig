@@ -70,6 +70,8 @@ CONFIG_ZMK_KSCAN_DEBOUNCE_RELEASE_MS=10
 # Enable both USB and BLE
 CONFIG_ZMK_USB=y
 CONFIG_ZMK_BLE=y
+CONFIG_BT_MAX_PAIRED=5
+CONFIG_BT_MAX_CONN=1
 
 # Milliseconds to wait after a setting change before writing it to flash memory
 CONFIG_ZMK_SETTINGS_SAVE_DEBOUNCE=1000
