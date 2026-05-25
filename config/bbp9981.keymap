@@ -244,24 +244,17 @@
          * ----------------------------------------------------------------- */
         default_layer {
             bindings = <
-                /* Shoulder: left=LCLK, right=RCLK */
-                &mkp LCLK                                                          &mkp RCLK
-
-                /* Row 2: Call, BB Key, Trackpad, Reverse, Tab */
-                &mo L_GEAR           &kp LGUI              &mkp LCLK              &mo L_RSV5                         &mo L_SHORT
-
-                /* Q row (plain letters) */
-                &kp Q      &kp W     &kp E      &kp R     &kp T                    &kp Y       &kp U       &kp I       &kp O       &kp P
-
-                /* A row (plain keys — no hold-tap on A/S/D/F/J/K/L) */
-                &kp A      &kp S     &kp D      &kp F     &kp G                    &kp H       &kp J       &kp K       &kp L       &kp BSPC
-
-                /* Z row */
-                &kp LSHFT  &kp Z     &kp X      &kp C     &kp V                    &kp B       &kp N       &kp M       &tdc_to_SYM &kp ENTER
-
-                /* Bottom row: LCTRL, LALT, SPACE, sl_mo SYM, sl_mo BT */
-                &kp LCTRL             &kp LALT              &kp SPACE             &sl_mo L_SYM L_SYM                &sl_mo L_BT L_BT
+                /* TEST MODE — each key outputs a unique code */
+                /* Shoulder */      &kp F13  &kp F14
+                /* Row 1 */         &kp F15  &kp F16  &kp F17  &kp F18  &kp F19
+                /* Q row */         &kp F20  &kp F21  &kp F22  &kp F23  &kp F24     &kp A    &kp B    &kp C    &kp D    &kp E
+                /* A row */         &kp F    &kp G    &kp H    &kp I    &kp J       &kp K    &kp L    &kp M    &kp N    &kp O
+                /* Z row */         &kp P    &kp Q    &kp R    &kp S    &kp T       &kp U    &kp V    &kp W    &kp X    &kp Y
+                /* Bottom */        &kp Z    &kp N1   &kp N2   &kp N3   &kp N4
             >;
+        };
+
+        /* sym_layer;
         };
 
         /* -----------------------------------------------------------------
