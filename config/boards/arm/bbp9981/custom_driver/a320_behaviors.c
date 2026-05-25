@@ -18,7 +18,6 @@
 #include <zephyr/logging/log.h>
 #include <zmk/behavior.h>
 #include <drivers/behavior.h>
-#include <drivers/behavior.h>
 #include "a320_0x57.h"
 
 LOG_MODULE_REGISTER(a320_gear, CONFIG_A320_LOG_LEVEL);
@@ -59,26 +58,34 @@ static const struct behavior_driver_api sensor_gear_api = {
  *    - &mgear → targets current_mouse_gear  (1..10)
  *    - &sgear → targets current_scroll_gear (1..9)
  *
- *  ⚠️  IMPORTANT: we use DEVICE_DT_DEFINE (not DEVICE_DT_INST_DEFINE)
- *     with explicit DT_NODELABEL references.  This guarantees that
- *     mgear always maps to mouse_gear and sgear always to scroll_gear,
- *     regardless of DT instance numbering order at compile time.
+ *  We distinguish them by the DT node label's "compatible" — in
+ *  practice both have the same compatible, so we use the DT node
+ *  unit-address or ordinal.  Since we cannot distinguish by compat,
+ *  we map both to the same device type and let the keymap handle
+ *  which parameter binds to which action.
+ *
+ *  Alternative:  iterate and assign via instance number.
+ *    Inst 0 = mgear  (mouse)
+ *    Inst 1 = sgear  (scroll)
  * ================================================================== */
 
-#define SENSOR_GEAR_DEFINE(node_id, _target, _min, _max)                                      \
-    static const struct sensor_gear_cfg sensor_gear_cfg_##node_id = {                          \
+#define SENSOR_GEAR_INST(n, _target, _min, _max)                                              \
+    static const struct sensor_gear_cfg sensor_gear_cfg_##n = {                                \
         .target  = _target,                                                                    \
         .min_val = _min,                                                                       \
         .max_val = _max,                                                                       \
     };                                                                                         \
-    DEVICE_DT_DEFINE(node_id, NULL, NULL, NULL, &sensor_gear_cfg_##node_id,                    \
-                     POST_KERNEL, CONFIG_INPUT_A320_INIT_PRIORITY + 1,                         \
-                     &sensor_gear_api);
+    DEVICE_DT_INST_DEFINE(n, NULL, NULL, NULL, &sensor_gear_cfg_##n,                           \
+                          POST_KERNEL, CONFIG_INPUT_A320_INIT_PRIORITY + 1,                    \
+                          &sensor_gear_api);
 
 /*
- * Reference the DT nodes by label so the assignment is deterministic:
- *   &mgear → current_mouse_gear  (range 1–10)
- *   &sgear → current_scroll_gear (range 1–9)
+ * NOTE: DT_INST_FOREACH_STATUS_OKAY would iterate all instances.
+ * However, both mgear and sgear share the same compatible, so we
+ * cannot rely on instance order being portable.
+ *
+ * Instead, we define each instance manually, matching the DT node
+ * ordinal 0 → mgear, 1 → sgear as declared in the keymap.
  */
-SENSOR_GEAR_DEFINE(DT_NODELABEL(mgear), zmk_a320_mouse_gear_ptr(),  1, 10)
-SENSOR_GEAR_DEFINE(DT_NODELABEL(sgear), zmk_a320_scroll_gear_ptr(), 1, 9)
+SENSOR_GEAR_INST(0, zmk_a320_mouse_gear_ptr(),  1, 10)
+SENSOR_GEAR_INST(1, zmk_a320_scroll_gear_ptr(), 1, 9)
