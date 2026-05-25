@@ -21,7 +21,6 @@
 #include <zephyr/logging/log.h>
 
 #include <stdlib.h>
-#include <math.h>
 #include <zmk/behavior.h>
 #include <zmk/keymap.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
@@ -55,17 +54,6 @@ static bool touched = false;
 static int16_t scroll_acc_x = 0;
 static int16_t scroll_acc_y = 0;
 static uint8_t scroll_samples = 0;
-static uint32_t last_scroll_trigger_ms = 0;
-
-/* Scroll inertia (Layer 4) */
-static bool inertia_active = false;
-static float inertia_vx = 0.0f;
-static float inertia_vy = 0.0f;
-
-/* Mouse inertia (Layer 11) */
-static bool mouse_inertia_active = false;
-static float mouse_inertia_vx = 0.0f;
-static float mouse_inertia_vy = 0.0f;
 
 /* ==================================================================
  *  2.  DATA & CONFIG STRUCTS
@@ -104,8 +92,8 @@ static inline int clamp_int(int val, int lo, int hi)
 /* Scroll threshold: gear 1→9, gear 9→1  (higher gear = more responsive) */
 static inline uint8_t scroll_gear_threshold(int gear)
 {
-    int t = 11 - clamp_int(gear, 1, 9);
-    return (t * t * 3 + 5);
+    int t = 10 - clamp_int(gear, 1, 9);
+    return (uint8_t)t;
 }
 
 static void a320_poll_work_handler(struct k_work *work)
@@ -116,9 +104,6 @@ static void a320_poll_work_handler(struct k_work *work)
 
     int pin_state = gpio_pin_get(motion_gpio_dev, MOTION_GPIO_PIN);
 
-    /* ---- Query current active layer (Section 2.3) ---- */
-    uint8_t active_layer = zmk_keymap_highest_layer_active();
-
     if (pin_state == 0) {
         int16_t raw_dx = 0, raw_dy = 0;
 
@@ -126,6 +111,9 @@ static void a320_poll_work_handler(struct k_work *work)
             k_work_reschedule(&data->poll_work, K_MSEC(CONFIG_A320_POLL_INTERVAL_MS));
             return;
         }
+
+        /* ---- Query current active layer (Section 2.3) ---- */
+        uint8_t active_layer = zmk_keymap_highest_layer_active();
 
         if (active_layer == 4) {
 
@@ -144,28 +132,16 @@ static void a320_poll_work_handler(struct k_work *work)
                 uint8_t threshold = scroll_gear_threshold(current_scroll_gear);
 
                 if (scroll_samples >= threshold) {
-                    uint32_t now = k_uptime_get();
-                    uint32_t dt = now - last_scroll_trigger_ms;
-                    last_scroll_trigger_ms = now;
+                    int16_t w_x = -(scroll_acc_x / 24);
+                    int16_t w_y = -(scroll_acc_y / 24);
 
-                    int speed = (dt < 30) ? 3 : (dt < 60) ? 2 : 1;
-                    int step = speed * current_scroll_gear / 3;
-                    if (step < 1) step = 1;
-
-                    int16_t w_x = -(scroll_acc_x * step / 24);
-                    int16_t w_y = -(scroll_acc_y * step / 24);
-
-                    if (w_y > step)  w_y = step;
-                    else if (w_y < -step) w_y = -step;
-                    if (w_x > step)  w_x = step;
-                    else if (w_x < -step) w_x = -step;
+                    if (w_y > 1)  w_y = 1;
+                    else if (w_y < -1) w_y = -1;
+                    if (w_x > 1)  w_x = 1;
+                    else if (w_x < -1) w_x = -1;
 
                     input_report_rel(dev, INPUT_REL_HWHEEL, -w_x, false, K_FOREVER);
                     input_report_rel(dev, INPUT_REL_WHEEL,   w_y, true,  K_FOREVER);
-
-                    inertia_active = true;
-                    inertia_vx = (float)(-w_x);
-                    inertia_vy = (float)(w_y);
 
                     scroll_acc_x = 0;
                     scroll_acc_y = 0;
@@ -185,15 +161,14 @@ static void a320_poll_work_handler(struct k_work *work)
             if (max_raw <= 2) {
                 factor = 1.0f;
             } else {
-                float gear_factor = 0.72f + (current_mouse_gear * 0.048f);
-                float base  = (0.1f + (current_mouse_gear * 0.3f)) * gear_factor;
-                float accel = 1.0f + ((max_raw - 2) * 0.035f);
-                if (accel > 1.75f) accel = 1.75f;
+                float base  = 0.1f + (current_mouse_gear * 0.3f);
+                float accel = 1.0f + ((max_raw - 2) * 0.05f);
+                if (accel > 2.5f) accel = 2.5f;
                 factor = base * accel;
             }
 
             input_report_rel(dev, INPUT_REL_X, (int16_t)(-raw_dx * factor), false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)( raw_dy * factor), true,  K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, (int16_t)(-raw_dy * factor), true,  K_FOREVER);
             touched = true;
 
         } else if (active_layer == 7) {
@@ -214,7 +189,7 @@ static void a320_poll_work_handler(struct k_work *work)
 
                 if (scroll_samples >= threshold) {
                     int16_t w_x = scroll_acc_x / 24;
-                    int16_t w_y = -(scroll_acc_y / 24);
+                    int16_t w_y = scroll_acc_y / 24; /* not negated → reversed direction */
 
                     if (w_y > 1)  w_y = 1;
                     else if (w_y < -1) w_y = -1;
@@ -231,33 +206,6 @@ static void a320_poll_work_handler(struct k_work *work)
             }
             touched = true;
 
-        } else if (active_layer == 11) {
-
-            /* ==============================================
-             *  MOUSE WITH INERTIA (Layer 11 - sliding)
-             * ============================================== */
-            int16_t max_raw = MAX(abs(raw_dx), abs(raw_dy));
-
-            float factor;
-            if (max_raw <= 2) {
-                factor = 1.0f;
-            } else {
-                float gear_factor = 0.72f + (current_mouse_gear * 0.048f);
-                float base  = (0.1f + (current_mouse_gear * 0.3f)) * gear_factor;
-                float accel = 1.0f + ((max_raw - 2) * 0.035f);
-                if (accel > 1.75f) accel = 1.75f;
-                factor = base * accel;
-            }
-
-            mouse_inertia_vx = (float)(raw_dx * factor);
-            mouse_inertia_vy = (float)(raw_dy * factor);
-
-            input_report_rel(dev, INPUT_REL_X, (int16_t)(raw_dx * factor), false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)(raw_dy * factor), true,  K_FOREVER);
-
-            mouse_inertia_active = (fabsf(mouse_inertia_vx) > 3.0f || fabsf(mouse_inertia_vy) > 3.0f);
-            touched = true;
-
         } else {
 
             /* ==============================================
@@ -271,10 +219,9 @@ static void a320_poll_work_handler(struct k_work *work)
                 factor = 1.0f;
             } else {
                 /* Dynamic acceleration */
-                float gear_factor = 0.72f + (current_mouse_gear * 0.048f);
-                float base  = (0.1f + (current_mouse_gear * 0.3f)) * gear_factor;
-                float accel = 1.0f + ((max_raw - 2) * 0.035f);
-                if (accel > 1.75f) accel = 1.75f;
+                float base  = 0.1f + (current_mouse_gear * 0.3f);
+                float accel = 1.0f + ((max_raw - 2) * 0.05f);
+                if (accel > 2.5f) accel = 2.5f;
                 factor = base * accel;
             }
 
@@ -284,55 +231,6 @@ static void a320_poll_work_handler(struct k_work *work)
         }
     } else {
         touched = false;
-
-        /* Scroll inertia (Layer 4) */
-        if (active_layer == 4 && inertia_active) {
-            int16_t w_x = (int16_t)(inertia_vx + 0.5f);
-            int16_t w_y = (int16_t)(inertia_vy + 0.5f);
-
-            if (w_y > 1)  w_y = 1;
-            else if (w_y < -1) w_y = -1;
-            if (w_x > 1)  w_x = 1;
-            else if (w_x < -1) w_x = -1;
-
-            if (w_x != 0 || w_y != 0) {
-                input_report_rel(dev, INPUT_REL_HWHEEL, -w_x, false, K_FOREVER);
-                input_report_rel(dev, INPUT_REL_WHEEL,   w_y, true,  K_FOREVER);
-            }
-
-            inertia_vx *= 0.85f;
-            inertia_vy *= 0.85f;
-
-            if (fabsf(inertia_vx) < 0.3f && fabsf(inertia_vy) < 0.3f) {
-                inertia_active = false;
-                inertia_vx = 0.0f;
-                inertia_vy = 0.0f;
-            }
-        }
-
-        /* Mouse inertia (Layer 11) */
-        if (active_layer == 11 && mouse_inertia_active) {
-            if (fabsf(mouse_inertia_vx) > 3.0f || fabsf(mouse_inertia_vy) > 3.0f ||
-                fabsf(mouse_inertia_vx) > 0.5f || fabsf(mouse_inertia_vy) > 0.5f) {
-
-                int16_t out_x = (int16_t)(mouse_inertia_vx + 0.5f);
-                int16_t out_y = (int16_t)(mouse_inertia_vy + 0.5f);
-
-                input_report_rel(dev, INPUT_REL_X, out_x, false, K_FOREVER);
-                input_report_rel(dev, INPUT_REL_Y, out_y, true,  K_FOREVER);
-
-                mouse_inertia_vx *= 0.88f;
-                mouse_inertia_vy *= 0.88f;
-
-                if (fabsf(mouse_inertia_vx) < 0.5f && fabsf(mouse_inertia_vy) < 0.5f) {
-                    mouse_inertia_active = false;
-                    mouse_inertia_vx = 0.0f;
-                    mouse_inertia_vy = 0.0f;
-                }
-            } else {
-                mouse_inertia_active = false;
-            }
-        }
     }
 
     k_work_reschedule(&data->poll_work, K_MSEC(CONFIG_A320_POLL_INTERVAL_MS));
