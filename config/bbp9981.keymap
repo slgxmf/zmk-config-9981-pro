@@ -257,7 +257,7 @@
                 &kp A      &kp S     &kp D      &kp F     &kp G                    &kp H       &kp J       &kp K       &kp L       &kp BSPC
 
                 /* Z row */
-                &kp LSHFT      &kp Z      &kp X     &kp C      &kp V     &kp B                    &kp N       &kp M       &kp COMMA   &kp DOT     &kp ENTER
+                &kp LSHFT  &kp Z     &kp X      &kp C     &kp V                    &kp B       &kp N       &kp M       &tdc_to_SYM &kp ENTER
 
                 /* Bottom row: LCTRL, LALT, SPACE, sl_mo SYM, sl_mo BT */
                 &kp LCTRL             &kp LALT              &kp SPACE             &sl_mo L_SYM L_SYM                &sl_mo L_BT L_BT
