@@ -29,7 +29,7 @@
  *  L_RSV_0  5   Reserved (also routes to scroll mode)
  *  L_REV_M  6   Reverse mouse direction      <-- X/Y * -1
  *  L_REV_S  7   Reverse scroll direction     <-- Wheel * -1
- *  L_RSV_1  8   Reserved
+ *  L_META   8   Caps+key shortcuts (ESC→gear, TAB→reverse)
  *  L_RSV_2  9   Reserved
  *  L_RSV_3 10   Reserved
  *  L_RSV_4 11   Reserved (highest)
@@ -43,7 +43,7 @@
 #define L_RSV_0  5
 #define L_REV_M  6
 #define L_REV_S  7
-#define L_RSV_1  8
+#define L_META   8   /* Caps hold → command layer */
 #define L_RSV_2  9
 #define L_RSV_3 10
 #define L_RSV_4 11
@@ -250,7 +250,7 @@
                 &kp LSHFT  &kp Z     &kp X      &kp C     &kp V                    &kp B       &kp N       &kp M       &tdc_to_SYM &kp ENTER
 
                 /* Bottom row — Caps=sl_tog (模式 4), Tab removed, SYM=sl_mo */
-                &sl_tog L_UPPER L_SYM   &kp LALT              &kp SPACE             &sl_mo L_SYM L_SYM              &sl_mo L_UPPER L_UPPER
+                &mo L_META            &kp LALT              &kp SPACE             &sl_mo L_SYM L_SYM              &sl_mo L_UPPER L_UPPER
             >;
         };
 
@@ -370,16 +370,21 @@
         };
 
         /* -----------------------------------------------------------------
-         *  Layers 8–11  —  Reserved  (L_RSV_1 .. L_RSV_4)
+         *  Layer 8  —  L_META  (Caps Lock held: command shortcuts)
+         *
+         *  Hold Caps Lock → this layer overlays.
+         *    ESC  → &tog L_GEAR  (lock into sensitivity control)
+         *    TAB  → &tog L_REV_M (lock into mouse reverse)
+         *    All other keys → &trans (pass through to base layer)
          * ----------------------------------------------------------------- */
-        layer_8 {
+        meta_layer {
             bindings = <
-                &none                                                             &none
-                &none                 &none                      &none             &none                             &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &none           &none
-                &none       &none     &none        &none         &none             &none             &none           &none           &to L_BASE      &none
-                &none                 &none                                        &none                               &to L_BASE                      &to L_BASE
+                &trans                                                            &trans
+                &tog L_GEAR         &trans                  &trans            &trans                            &tog L_REV_M
+                &trans    &trans   &trans      &trans       &trans           &trans           &trans         &trans         &trans         &trans
+                &trans    &trans   &trans      &trans       &trans           &trans           &trans         &trans         &trans         &trans
+                &trans    &trans   &trans      &trans       &trans           &trans           &trans         &trans         &to L_BASE      &trans
+                &trans              &trans                                    &trans                            &to L_BASE                      &to L_BASE
             >;
         };
 
