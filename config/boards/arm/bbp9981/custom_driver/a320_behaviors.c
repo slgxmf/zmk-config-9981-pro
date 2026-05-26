@@ -3,8 +3,11 @@
  *
  *   &mgear  —  set current_mouse_gear  (range 1–10)
  *   &sgear  —  set current_scroll_gear (range 1–9)
+ *   &msbtn  —  toggle LCLK/RCLK swap
+ *   &mkpswap —  mouse key press with optional LCLK↔RCLK swap
  *
- * Uses BEHAVIOR_DT_INST_DEFINE so Zephyr's behavior system registers &mgear / &sgear.
+ * Uses BEHAVIOR_DT_INST_DEFINE so Zephyr's behavior system registers
+ * the behaviors at &mgear / &sgear / &msbtn / &mkpswap.
  * .target is assigned at init time (not static) because the function
  * call result is not a compile-time constant in C99.
  *
@@ -19,6 +22,10 @@
 #include <zephyr/logging/log.h>
 #include <zmk/behavior.h>
 #include <drivers/behavior.h>
+#include <zmk/hid.h>
+#include <zephyr/input/input.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <dt-bindings/zmk/pointing.h>
 #include "a320_0x57.h"
 
 LOG_MODULE_REGISTER(a320_gear, CONFIG_A320_LOG_LEVEL);
@@ -80,6 +87,13 @@ static int sensor_gear_init_1(const struct device *dev)
     return 0;
 }
 
+static int sensor_gear_init_2(const struct device *dev)
+{
+    struct sensor_gear_data *data = dev->data;
+    data->target = zmk_a320_accel_profile_ptr();
+    return 0;
+}
+
 /* ==================================================================
  *  Static device instances
  * ================================================================== */
@@ -95,3 +109,112 @@ static int sensor_gear_init_1(const struct device *dev)
 
 SENSOR_GEAR_INST(0, sensor_gear_init_0, 1, 10)
 SENSOR_GEAR_INST(1, sensor_gear_init_1, 1, 9)
+SENSOR_GEAR_INST(2, sensor_gear_init_2, 1, 5)
+
+/* ==================================================================
+ *  SWAP-BUTTONS TOGGLE BEHAVIOR (&msbtn)
+ *
+ *  Toggles the swap_buttons flag.
+ *  When ON: &mkpswap LCLK sends right-click, &mkpswap RCLK sends left-click.
+ *  Compat: zmk,behavior-swap-buttons
+ * ================================================================== */
+
+#undef DT_DRV_COMPAT
+#define DT_DRV_COMPAT zmk_behavior_swap_buttons
+
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
+static int swap_buttons_binding_pressed(const struct zmk_behavior_binding *binding,
+                                        struct zmk_behavior_binding_event event)
+{
+    bool *flag = zmk_a320_swap_buttons_ptr();
+    *flag = !(*flag);
+    LOG_INF("swap_buttons toggled to %s", *flag ? "ON" : "OFF");
+    return ZMK_BEHAVIOR_OPAQUE;
+}
+
+static int swap_buttons_binding_released(const struct zmk_behavior_binding *binding,
+                                         struct zmk_behavior_binding_event event)
+{
+    return ZMK_BEHAVIOR_OPAQUE;
+}
+
+static const struct behavior_driver_api swap_buttons_api = {
+    .binding_pressed = swap_buttons_binding_pressed,
+    .binding_released = swap_buttons_binding_released,
+};
+
+#define SWAP_BTN_INST(n)                                                                           \
+    BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, NULL, POST_KERNEL,                                \
+                            CONFIG_INPUT_A320_INIT_PRIORITY, &swap_buttons_api);
+
+DT_INST_FOREACH_STATUS_OKAY(SWAP_BTN_INST)
+
+#endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */
+
+/* ==================================================================
+ *  MOUSE KEY PRESS WITH SWAP (&mkpswap)
+ *
+ *  Drop-in replacement for &mkp that checks the swap_buttons flag.
+ *  When swap_buttons is true, MB1 (BIT(0)) is reported as INPUT_BTN_1
+ *  and MB2 (BIT(1)) is reported as INPUT_BTN_0.
+ *  Compat: zmk,behavior-mouse-key-press-swap
+ * ================================================================== */
+
+#undef DT_DRV_COMPAT
+#define DT_DRV_COMPAT zmk_behavior_mouse_key_press_swap
+
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
+static void mkpswap_process_key_state(const struct device *dev, int32_t val, bool pressed)
+{
+    bool *swap = zmk_a320_swap_buttons_ptr();
+    int32_t swapped_val = val;
+
+    if (*swap) {
+        /* Swap MB1 (BIT(0)) ↔ MB2 (BIT(1)) */
+        bool has_mb1 = (val & MB1) != 0;
+        bool has_mb2 = (val & MB2) != 0;
+        swapped_val = val & ~(MB1 | MB2); /* clear both */
+        if (has_mb1) swapped_val |= MB2;
+        if (has_mb2) swapped_val |= MB1;
+    }
+
+    for (int i = 0; i < ZMK_HID_MOUSE_NUM_BUTTONS; i++) {
+        if (swapped_val & BIT(i)) {
+            WRITE_BIT(swapped_val, i, 0);
+            input_report_key(dev, INPUT_BTN_0 + i, pressed ? 1 : 0, swapped_val == 0, K_FOREVER);
+        }
+    }
+}
+
+static int mkpswap_binding_pressed(struct zmk_behavior_binding *binding,
+                                   struct zmk_behavior_binding_event event)
+{
+    LOG_DBG("mkpswap pressed: param1=0x%02X", binding->param1);
+    mkpswap_process_key_state(zmk_behavior_get_binding(binding->behavior_dev),
+                              binding->param1, true);
+    return 0;
+}
+
+static int mkpswap_binding_released(struct zmk_behavior_binding *binding,
+                                    struct zmk_behavior_binding_event event)
+{
+    LOG_DBG("mkpswap released: param1=0x%02X", binding->param1);
+    mkpswap_process_key_state(zmk_behavior_get_binding(binding->behavior_dev),
+                              binding->param1, false);
+    return 0;
+}
+
+static const struct behavior_driver_api mkpswap_api = {
+    .binding_pressed = mkpswap_binding_pressed,
+    .binding_released = mkpswap_binding_released,
+};
+
+#define MKPSWAP_INST(n)                                                                             \
+    BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, NULL, POST_KERNEL,                                \
+                            CONFIG_INPUT_A320_INIT_PRIORITY, &mkpswap_api);
+
+DT_INST_FOREACH_STATUS_OKAY(MKPSWAP_INST)
+
+#endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

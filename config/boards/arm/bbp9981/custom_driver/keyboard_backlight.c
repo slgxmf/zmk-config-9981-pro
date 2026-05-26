@@ -37,6 +37,70 @@ static const struct device *const indiled_dev = DEVICE_DT_GET(DT_CHOSEN(zmk_keyb
 #define CYCLE_BRT_STEP 5
 #define CYCLE_INTERVAL_MS 20
 
+/* Smoothstep fade (R11: ≥100ms transition) */
+#define SMOOTHSTEP_DURATION_MS 120
+#define SMOOTHSTEP_INTERVAL_MS 10
+#define SMOOTHSTEP_STEPS (SMOOTHSTEP_DURATION_MS / SMOOTHSTEP_INTERVAL_MS)
+
+static uint8_t smoothstep_target_brt = 0;
+static uint8_t smoothstep_start_brt = 0;
+static uint8_t smoothstep_step = 0;
+static bool smoothstep_running = false;
+
+static struct k_work_delayable smoothstep_work;
+
+static void set_led_brightness_smoothstep(struct k_work *work);
+
+static void smoothstep_fade_to(uint8_t target_brt) {
+    smoothstep_target_brt = target_brt;
+    smoothstep_start_brt = 0; /* Will be set on first step */
+    smoothstep_step = 0;
+    smoothstep_running = true;
+    k_work_reschedule(&smoothstep_work, K_NO_WAIT);
+}
+
+static void set_led_brightness_smoothstep(struct k_work *work) {
+    if (!smoothstep_running) return;
+
+    if (smoothstep_step == 0) {
+        /* Read current brightness as starting point */
+        smoothstep_start_brt = 0;
+    }
+
+    smoothstep_step++;
+    if (smoothstep_step > SMOOTHSTEP_STEPS) {
+        /* Final step: set target directly */
+        set_led_brightness(smoothstep_target_brt);
+        smoothstep_running = false;
+        return;
+    }
+
+    /* Smoothstep formula (fixed-point Q8.8):
+     *   t = step / STEPS
+     *   val = t * t * (3 - 2*t)
+     * All values in Q8.8: 1.0 = 256, 2.0 = 512, 3.0 = 768
+     */
+    int32_t t_q8_8 = ((int32_t)smoothstep_step << 8) / (int32_t)SMOOTHSTEP_STEPS;
+    int32_t t2 = (t_q8_8 * t_q8_8) >> 8;  /* t² in Q8.8 */
+    int32_t three = 3 << 8;   /* 3.0 in Q8.8 */
+    int32_t two = 2 << 8;     /* 2.0 in Q8.8 */
+    int32_t smooth_t_q8_8 = (t2 * (three - ((two * t_q8_8) >> 8))) >> 8;  /* t²(3-2t) */
+    
+    int32_t diff = (int32_t)smoothstep_target_brt - (int32_t)smoothstep_start_brt;
+    int32_t delta = (diff * smooth_t_q8_8) >> 8;
+    uint8_t brt = (uint8_t)(smoothstep_start_brt + delta);
+    
+    /* Clamp */
+    if (diff > 0) {
+        if (brt > smoothstep_target_brt) brt = smoothstep_target_brt;
+    } else {
+        if (brt < smoothstep_target_brt) brt = smoothstep_target_brt;
+    }
+
+    set_led_brightness(brt);
+    k_work_reschedule(&smoothstep_work, K_MSEC(SMOOTHSTEP_INTERVAL_MS));
+}
+
 static bool prev_active = false;
 static int prev_layer = -1;
 static bool blink_on = false;
@@ -127,7 +191,7 @@ static void polling_work_handler(struct k_work *work) {
         case 0:
  
             uint8_t brt = (rgb_on && active) ? ug_brt : 0;
-            set_led_brightness(brt);
+            smoothstep_fade_to(brt);
             break;
 
         case 1:
@@ -151,7 +215,7 @@ static void polling_work_handler(struct k_work *work) {
             break;
 
         default:
-            set_led_brightness(0);
+            smoothstep_fade_to(0);
             break;
         }
     }
@@ -171,6 +235,7 @@ static int keyboardbacklight_init(void) {
     k_work_init_delayable(&polling_work, polling_work_handler);
     k_work_init_delayable(&blink_work, blink_work_handler);
     k_work_init_delayable(&cycle_work, cycle_work_handler);
+    k_work_init_delayable(&smoothstep_work, set_led_brightness_smoothstep);
 
     k_work_reschedule(&polling_work, K_MSEC(100));
     return 0;

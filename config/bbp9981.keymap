@@ -1,21 +1,25 @@
 /*
  * 9981-Pro — ZMK Keymap
  * =======================
- * S6 12-layer keymap spec (2026-05-26)
+ * S6 16-layer keymap spec (2026-05-27) — Phase 4 R8
  *
  * Layer architecture:
  *   L_BASE          0   Default (alphanumeric, plain keys)
  *   L_SYM           1   Symbols / numbers
  *   L_UPPER         2   System control: BT + backlight + RGB + USB output
  *   L_MEDIA         3   Media controls (volume, playback)
- *   L_SCROLL_TEMP   4   Scroll + gear selection (sgear 1-9, mgear 1-10)
+ *   L_SCROLL_TEMP   4   Scroll + gear selection (sgear 1-9, mgear 1-10, agear 1-5)
  *   L_ESC_TEMP      5   ESC + shortcuts, scroll mode
  *   L_REV_MOUSE     6   Reverse mouse (transparent, 1 exit key, red RGB)
  *   L_REV_SCROLL    7   Reverse scroll (transparent, 1 exit key, blue RGB)
- *   L_RSV_1         8   Reserved (combo entry for special functions)
- *   L_RSV_2         9   Reserved
- *   L_RSV_3         10  Reserved
- *   L_RSV_4         11  Reserved
+ *   L_SCROLL_FIXED  8   Scroll fixed mode (to, not mo)
+ *   L_MOUSE_FIXED   9   Mouse fixed mode (to, not mo)
+ *   L_RSV_A         10  Reserved
+ *   L_RSV_B         11  Reserved
+ *   L_RSV_C         12  Reserved
+ *   L_RSV_D         13  Reserved
+ *   L_RSV_E         14  Reserved
+ *   L_RSV_F         15  Reserved
  *
  * SPDX-License-Identifier: MIT
  */
@@ -29,7 +33,7 @@
 #include <dt-bindings/zmk/rgb.h>
 
 /* ==============================================================
- *  LAYER DEFINITIONS  —  S6 12-layer
+ *  LAYER DEFINITIONS  —  16-layer (Phase 4 R8)
  * ============================================================== */
 
 #define L_BASE          0
@@ -40,10 +44,14 @@
 #define L_ESC_TEMP      5
 #define L_REV_MOUSE     6
 #define L_REV_SCROLL    7
-#define L_RSV_1         8
-#define L_RSV_2         9
-#define L_RSV_3         10
-#define L_RSV_4         11
+#define L_SCROLL_FIXED  8
+#define L_MOUSE_FIXED   9
+#define L_RSV_A         10
+#define L_RSV_B         11
+#define L_RSV_C         12
+#define L_RSV_D         13
+#define L_RSV_E         14
+#define L_RSV_F         15
 
 /* Convenience macro for mode-6 (hold MO / tap SL) */
 
@@ -67,7 +75,7 @@
             compatible = "zmk,behavior-tap-dance";
             #binding-cells = <0>;
             tapping-term-ms = <400>;
-            bindings = <&mkp LCLK>, <&bt BT_CLR>;
+            bindings = <&mkpswap LCLK>, <&bt BT_CLR>;
         };
     };
 
@@ -197,6 +205,26 @@
             min-gear = <1>;
             max-gear = <9>;
         };
+
+        /* ---- Mouse button swap behavior ---- */
+
+        msbtn: msbtn {
+            compatible = "zmk,behavior-swap-buttons";
+            #binding-cells = <0>;
+        };
+
+        mkpswap: mkpswap {
+            compatible = "zmk,behavior-mouse-key-press-swap";
+            #binding-cells = <1>;
+        };
+
+        agear: agear {
+            compatible = "zmk,behavior-sensor-gear";
+            #binding-cells = <1>;
+            gear-type = "accel";
+            min-gear = <1>;
+            max-gear = <5>;
+        };
     };
 
     /* ==============================================================
@@ -244,12 +272,12 @@
     combos {
         compatible = "zmk,combos";
 
-        /* SRS combo: key-positions 10 19, 50ms timeout, triggers L_RSV_1 */
+        /* SRS combo: key-positions 10 19 (R+D), triggers combo layer */
 
         combo_rsv_1 {
             timeout-ms = <50>;
             key-positions = <10 19>;
-            bindings = <&mo L_RSV_1>;
+            bindings = <&mo L_RSV_A>;
         };
     };
 
@@ -269,9 +297,9 @@
 
         default_layer {
             bindings = <
-&mkp LCLK          &mkp RCLK
-&mo L_SCROLL_TEMP  &kp LGUI   &mkp LCLK  &mo L_RSV_2  &mo L_RSV_3
-&kp Q              &kp W      &kp E      &kp R        &kp T        &kp Y        &kp U                   &kp I               &kp O          &kp P
+&mkpswap RCLK          &mkpswap LCLK
+&mo L_SCROLL_TEMP      &kp LGUI   &mkpswap LCLK  &mo L_RSV_C  &mo L_RSV_D
+&kp Q                  &kp W      &kp E          &kp R        &kp T        &kp Y        &kp U                   &kp I               &kp O          &kp P
 &kp A              &kp S      &kp D      &kp F        &kp G        &kp H        &kp J                   &kp K               &kp L          &kp BSPC
 &kp LSHFT          &kp Z      &kp X      &kp C        &kp V        &kp B        &kp N                   &kp M               &tdc_quot_dqt  &kp ENTER
                               &kp LCTRL               &kp LALT     &kp SPACE    &sl_mo L_UPPER L_UPPER  &sl_mo L_SYM L_SYM
@@ -285,7 +313,7 @@
         sym_layer {
             bindings = <
 &kp C_VOL_UP  &kp C_VOL_DN
-&kp PSCRN     &kp C_AC_SEARCH  &mkp LCLK  &kp F5  &kp F12
+&kp PSCRN     &kp C_AC_SEARCH  &mkpswap LCLK  &kp F5  &kp F12
 &kp HASH      &kp N1           &kp N2     &kp N3  &ht_bp LBKT LPAR  &ht_bp RBKT RPAR    &kp UNDER   &kp MINUS               &kp PLUS  &kp AT
 &kp STAR      &kp N4           &kp N5     &kp N6  &kp SLASH         &kp COLON           &kp SEMI    &kp APOS                &kp DQT   &kp DEL
 &kp LSHFT     &kp N7           &kp N8     &kp N9  &kp QMARK         &kp EXCL            &kp COMMA   &tdc_quot_dqt           &kp DOT   &kp ENTER
@@ -300,7 +328,7 @@
         upper_layer {
             bindings = <
 &kp C_BRI_DN  &kp C_BRI_UP
-&bt BT_SEL 0  &bt BT_SEL 1     &bt BT_CLR       &bt BT_SEL 3  &bt BT_SEL 4
+&bt BT_SEL 0  &bt BT_SEL 1     &bt BT_SEL 2       &bt BT_SEL 3  &bt BT_CLR
 &kp C_BRI_UP  &rgb_ug RGB_BRI  &rgb_ug RGB_EFF  &out OUT_TOG  &td_boot_out  &kp C_BRI_DN    &rgb_ug RGB_BRD  &rgb_ug RGB_EFR  &none       &none
 &kp C_BRI_DN  &none            &none            &none         &none         &none           &none            &to L_BASE       &to L_BASE  &none
             >;
@@ -326,6 +354,7 @@
          *
          *  sgear: W=1, E=2, R=3, S=4, D=5, F=6, X=7, C=8, V=9
          *  mgear: T=1, Y=2, U=3, I=4, O=5, G=6, H=7, J=8, K=9, L=10
+         *  agear (accel profile): bottom row slow→aggressive: 1→5
          * ----------------------------------------------------------------- */
 
         scroll_temp_layer {
@@ -334,8 +363,8 @@
 &none  &none     &none      &to 7     &to 6
 &none  &sgear 1  &sgear 2   &sgear 3  &mgear 1  &mgear 2          &mgear 3         &mgear 4    &mgear 5   &none
 &none  &sgear 4  &sgear 5   &sgear 6  &mgear 6  &mgear 7          &mgear 8         &mgear 9    &mgear 10  &none
-&none  &sgear 7  &sgear 8   &sgear 9  &none     &none             &none            &none       &none      &none
-                 &kp LCTRL            &kp LALT  &mac_rev_mouse    &mac_rev_scroll  &to L_BASE
+&none  &sgear 7  &sgear 8   &sgear 9  &msbtn             &mac_rev_scroll    &none            &none       &none      &none
+                 &agear 1             &agear 2  &agear 3          &agear 4          &agear 5
             >;
         };
 
@@ -391,10 +420,48 @@
         };
 
         /* -----------------------------------------------------------------
-         *  Layer 8  —  L_RSV_1  (Reserved)
+         *  Layer 8  —  L_SCROLL_FIXED  (Scroll Fixed Mode)
+         *
+         *  Like L_SCROLL_TEMP but stays in scroll mode (to-based).
+         *  Touchpad in scroll mode. Shoulders transparent.
+         *  Same sgear/mgear layout as L_SCROLL_TEMP.
          * ----------------------------------------------------------------- */
 
-        rsv_1_layer {
+        scroll_fixed_layer {
+            bindings = <
+&trans       &trans
+&trans       &trans  &trans  &to L_BASE     &to L_BASE
+&none        &sgear 1  &sgear 2   &sgear 3  &mgear 1  &mgear 2          &mgear 3         &mgear 4    &mgear 5   &none
+&none        &sgear 4  &sgear 5   &sgear 6  &mgear 6  &mgear 7          &mgear 8         &mgear 9    &mgear 10  &none
+&none        &sgear 7  &sgear 8   &sgear 9  &none     &none             &none            &none       &none      &none
+                        &kp LCTRL            &kp LALT  &to L_BASE       &to L_BASE       &to L_BASE
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 9  —  L_MOUSE_FIXED  (Mouse Fixed Mode)
+         *
+         *  Normal mouse mode that stays. Mostly transparent.
+         *  Touchpad in normal mouse mode. Shoulders transparent.
+         *  Bottom row: exit keys.
+         * ----------------------------------------------------------------- */
+
+        mouse_fixed_layer {
+            bindings = <
+&trans  &trans
+&trans  &trans  &trans  &to L_BASE  &to L_BASE
+&trans  &trans  &trans  &trans  &trans  &trans         &trans       &trans  &trans  &trans
+&trans  &trans  &trans  &trans  &trans  &trans         &trans       &trans  &trans  &trans
+&trans  &trans  &trans  &trans  &trans  &trans         &trans       &trans  &trans  &trans
+                &none           &none   &to L_BASE    &to L_BASE  &to L_BASE
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 10  —  L_RSV_A  (Reserved)
+         * ----------------------------------------------------------------- */
+
+        rsv_a_layer {
             bindings = <
 &none  &none
 &none  &none  &none  &none  &none
@@ -406,10 +473,10 @@
         };
 
         /* -----------------------------------------------------------------
-         *  Layer 9  —  L_RSV_2  (Reserved)
+         *  Layer 11  —  L_RSV_B  (Reserved)
          * ----------------------------------------------------------------- */
 
-        rsv_2_layer {
+        rsv_b_layer {
             bindings = <
 &none  &none
 &none  &none  &none  &none  &none
@@ -421,10 +488,10 @@
         };
 
         /* -----------------------------------------------------------------
-         *  Layer 10  —  L_RSV_3  (Reserved)
+         *  Layer 12  —  L_RSV_C  (Reserved)
          * ----------------------------------------------------------------- */
 
-        rsv_3_layer {
+        rsv_c_layer {
             bindings = <
 &none  &none
 &none  &none  &none  &none  &none
@@ -436,10 +503,40 @@
         };
 
         /* -----------------------------------------------------------------
-         *  Layer 11  —  L_RSV_4  (Reserved)
+         *  Layer 13  —  L_RSV_D  (Reserved)
          * ----------------------------------------------------------------- */
 
-        rsv_4_layer {
+        rsv_d_layer {
+            bindings = <
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none         &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none         &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none         &none       &none  &none  &none
+              &none         &none  &to L_BASE    &to L_BASE  &none
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 14  —  L_RSV_E  (Reserved)
+         * ----------------------------------------------------------------- */
+
+        rsv_e_layer {
+            bindings = <
+&none  &none
+&none  &none  &none  &none  &none
+&none  &none  &none  &none  &none  &none         &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none         &none       &none  &none  &none
+&none  &none  &none  &none  &none  &none         &none       &none  &none  &none
+              &none         &none  &to L_BASE    &to L_BASE  &none
+            >;
+        };
+
+        /* -----------------------------------------------------------------
+         *  Layer 15  —  L_RSV_F  (Reserved)
+         * ----------------------------------------------------------------- */
+
+        rsv_f_layer {
             bindings = <
 &none  &none
 &none  &none  &none  &none  &none

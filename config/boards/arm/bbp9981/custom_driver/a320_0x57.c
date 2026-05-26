@@ -35,12 +35,47 @@ LOG_MODULE_REGISTER(a320, CONFIG_A320_LOG_LEVEL);
  *     Replaced with two independent global gear variables.
  * ================================================================== */
 
-static int current_mouse_gear  = 2;  /* range 1–10 */
-static int current_scroll_gear = 2;  /* range 1–9  */
+static int current_mouse_gear   = 2;  /* range 1–10 */
+static int current_scroll_gear  = 2;  /* range 1–9  */
+static int current_accel_profile = 3; /* range 1–5, default 3 (normal) */
+static bool swap_buttons = false;      /* LCLK↔RCLK swap flag */
+
+/* ==================================================================
+ *  R13: Inertia state for exponential-decay glide
+ * ================================================================== */
+
+/*
+ * Precomputed decay values (Q8.0) for poll_interval = 10 ms:
+ *   τ = 0.6s → decay_per_tick = 1 - exp(-10/600) ≈ 0.0165 → 4
+ *   τ = 0.45s → decay_per_tick = 1 - exp(-10/450) ≈ 0.0220 → 6
+ *   τ = 0.3s  → decay_per_tick = 1 - exp(-10/300) ≈ 0.0328 → 8
+ *   τ = 0.2s  → decay_per_tick = 1 - exp(-10/200) ≈ 0.0488 → 12
+ */
+static const uint8_t INERTIA_DECAY_LUT[4] = {
+    4,   /* τ=0.6s (gentle) */
+    6,   /* τ=0.45s (moderate) */
+    8,   /* τ=0.3s (default) */
+    12,  /* τ=0.2s (quick stop) */
+};
+#define INERTIA_DEFAULT_DECAY_IDX 2   /* τ=0.3s */
+#define INERTIA_THRESHOLD 2           /* Stop inertia below this velocity */
+
+static int current_inertia_decay_idx = INERTIA_DEFAULT_DECAY_IDX;
+
+static struct a320_inertia inertia_state = {
+    .vx = 0,
+    .vy = 0,
+    .decay = 8,  /* INERTIA_DECAY_LUT[INERTIA_DEFAULT_DECAY_IDX] */
+    .active = false,
+};
 
 /* Exposed for a320_behaviors.c (header declares these) */
-int *zmk_a320_mouse_gear_ptr(void)  { return &current_mouse_gear; }
-int *zmk_a320_scroll_gear_ptr(void) { return &current_scroll_gear; }
+int  *zmk_a320_mouse_gear_ptr(void)           { return &current_mouse_gear; }
+int  *zmk_a320_scroll_gear_ptr(void)          { return &current_scroll_gear; }
+int  *zmk_a320_accel_profile_ptr(void)        { return &current_accel_profile; }
+bool *zmk_a320_swap_buttons_ptr(void)         { return &swap_buttons; }
+int  *zmk_a320_inertia_decay_idx_ptr(void)    { return &current_inertia_decay_idx; }
+struct a320_inertia *zmk_a320_inertia_state_ptr(void) { return &inertia_state; }
 
 /* === Configure Motion GPIO === */
 #define MOTION_GPIO_NODE DT_NODELABEL(gpio0)
@@ -54,6 +89,28 @@ static bool touched = false;
 static int16_t scroll_acc_x = 0;
 static int16_t scroll_acc_y = 0;
 static uint8_t scroll_samples = 0;
+
+/* ==================================================================
+ *  1b.  FILTER PIPELINE STATE  (R4)
+ *       Baseline → LPF → Rate Limiter → Accel Comp
+ *       All Kconfig-configurable, Q8.0 fixed-point.
+ * ================================================================== */
+
+/* --- Baseline tracking (EMA DC offset removal) --- */
+static int16_t baseline_ema_x = 0;
+static int16_t baseline_ema_y = 0;
+
+/* --- LPF low-pass filter state --- */
+static int16_t lpf_state_x = 0;
+static int16_t lpf_state_y = 0;
+
+/* --- Rate limiter previous values --- */
+static int16_t rlim_prev_x = 0;
+static int16_t rlim_prev_y = 0;
+
+/* --- Accel compensation previous values --- */
+static int16_t accel_prev_x = 0;
+static int16_t accel_prev_y = 0;
 
 /* ==================================================================
  *  2.  DATA & CONFIG STRUCTS
@@ -80,6 +137,8 @@ static int  a320_read_motion(const struct device *dev, int16_t *dx, int16_t *dy)
 /* ==================================================================
  *  3.  NONLINEAR DYNAMIC ACCELERATION  (Section 2.2)
  *      + STATE-AWARE ROUTING           (Section 2.3)
+ *
+ *      All arithmetic in Q8.8 fixed-point (no float).
  * ================================================================== */
 
 static inline int clamp_int(int val, int lo, int hi)
@@ -89,13 +148,231 @@ static inline int clamp_int(int val, int lo, int hi)
     return val;
 }
 
+/* ==================================================================
+ *  3b.  FILTER PIPELINE  (R4)
+ *       Baseline (EMA) → Low-Pass (1st-order IIR) → Rate Limiter
+ *       → Acceleration Compensation (lead)
+ *
+ *       All arithmetic in Q8.0 fixed-point. All parameters Kconfig.
+ *       Returns dx, dy as the filtered output (in-out params).
+ * ================================================================== */
+
+#ifndef CONFIG_A320_FILTER_BASELINE_ALPHA
+#define CONFIG_A320_FILTER_BASELINE_ALPHA 4
+#endif
+#ifndef CONFIG_A320_FILTER_LPF_ALPHA
+#define CONFIG_A320_FILTER_LPF_ALPHA 128
+#endif
+#ifndef CONFIG_A320_FILTER_RATE_LIMIT
+#define CONFIG_A320_FILTER_RATE_LIMIT 8
+#endif
+#ifndef CONFIG_A320_FILTER_ACCEL_GAIN
+#define CONFIG_A320_FILTER_ACCEL_GAIN 32
+#endif
+
+static void a320_filter_pipeline(int16_t *dx, int16_t *dy)
+{
+    int16_t raw_dx = *dx;
+    int16_t raw_dy = *dy;
+
+    /* ----------------------------------------------------------
+     *  Stage 1: Baseline tracking (EMA DC offset removal)
+     *  Slowly tracks the sensor's resting offset.
+     *  filtered = raw - baseline
+     *  baseline += (raw - baseline) * alpha / 256
+     * ---------------------------------------------------------- */
+    if (CONFIG_A320_FILTER_BASELINE_ALPHA > 0) {
+        int16_t offset_x = raw_dx - baseline_ema_x;
+        int16_t offset_y = raw_dy - baseline_ema_y;
+
+        baseline_ema_x += (int16_t)((offset_x * CONFIG_A320_FILTER_BASELINE_ALPHA) >> 8);
+        baseline_ema_y += (int16_t)((offset_y * CONFIG_A320_FILTER_BASELINE_ALPHA) >> 8);
+
+        *dx = offset_x;
+        *dy = offset_y;
+    }
+
+    /* ----------------------------------------------------------
+     *  Stage 2: Low-Pass Filter (1st-order IIR)
+     *  Smooths jitter by blending with previous state.
+     *  out = prev + (in - prev) * alpha / 256
+     *  alpha=0 → no filtering, alpha=255 → full pass-through
+     * ---------------------------------------------------------- */
+    if (CONFIG_A320_FILTER_LPF_ALPHA < 255) {
+        int16_t lpf_alpha = (int16_t)CONFIG_A320_FILTER_LPF_ALPHA;
+        lpf_state_x += (int16_t)(((*dx - lpf_state_x) * lpf_alpha) >> 8);
+        lpf_state_y += (int16_t)(((*dy - lpf_state_y) * lpf_alpha) >> 8);
+        *dx = lpf_state_x;
+        *dy = lpf_state_y;
+    }
+
+    /* ----------------------------------------------------------
+     *  Stage 3: Rate Limiter (jitter spike suppression)
+     *  Caps delta between successive readings.
+     *  delta = clamp(current - prev, -limit, +limit)
+     *  out = prev + delta
+     * ---------------------------------------------------------- */
+    if (CONFIG_A320_FILTER_RATE_LIMIT > 0) {
+        int16_t rlim = (int16_t)CONFIG_A320_FILTER_RATE_LIMIT;
+        int16_t delta_x = *dx - rlim_prev_x;
+        int16_t delta_y = *dy - rlim_prev_y;
+
+        if (delta_x > rlim)  delta_x = rlim;
+        if (delta_x < -rlim) delta_x = -rlim;
+        if (delta_y > rlim)  delta_y = rlim;
+        if (delta_y < -rlim) delta_y = -rlim;
+
+        rlim_prev_x += delta_x;
+        rlim_prev_y += delta_y;
+        *dx = rlim_prev_x;
+        *dy = rlim_prev_y;
+    } else {
+        rlim_prev_x = *dx;
+        rlim_prev_y = *dy;
+    }
+
+    /* ----------------------------------------------------------
+     *  Stage 4: Acceleration Compensation (lead)
+     *  When velocity changes, add a fraction of the delta to
+     *  reduce perceived lag from earlier filtering.
+     *  out += (out - prev_accel) * gain / 256
+     * ---------------------------------------------------------- */
+    if (CONFIG_A320_FILTER_ACCEL_GAIN > 0) {
+        int16_t gain = (int16_t)CONFIG_A320_FILTER_ACCEL_GAIN;
+        int16_t accel_dx = *dx - accel_prev_x;
+        int16_t accel_dy = *dy - accel_prev_y;
+
+        *dx += (int16_t)((accel_dx * gain) >> 8);
+        *dy += (int16_t)((accel_dy * gain) >> 8);
+
+        accel_prev_x = *dx;
+        accel_prev_y = *dy;
+    } else {
+        accel_prev_x = *dx;
+        accel_prev_y = *dy;
+    }
+}
+
+/*
+ * Geometric base-speed table (Q8.8).
+ *   gear 1 → 0.5x  = 128
+ *   gear 10 → 0.7x = 179
+ *   ratio per step = (179/128)^(1/9) ≈ 1.0381
+ */
+static const int16_t MOUSE_BASE_FACTOR_Q8_8[10] = {
+    128, 133, 138, 143, 149, 154, 160, 166, 172, 179
+};
+
+/*
+ * Accel max-multiplier cap LUT (Q8.8 fixed-point).
+ *   Level 1 (slow):   1.5x = 384
+ *   Level 2 (normal-): 2.0x = 512
+ *   Level 3 (normal):  2.5x = 640  (default)
+ *   Level 4 (fast):    3.5x = 896
+ *   Level 5 (aggressive): 5.0x = 1280
+ */
+static const int16_t ACCEL_PROFILE_CAP_Q8_8[5] = {
+    384, 512, 640, 896, 1280
+};
+
+/*
+ * Scroll speed factor LUT (Q10.6 fixed-point).
+ *   gear 1 = 0.6x = 38,  gear 9 = 1.1x = 70
+ *   geometric ratio per step = (70/38)^(1/8) ≈ 1.079
+ */
+/*
+ * Scroll speed factor LUT (Q10.6 fixed-point).
+ *   gear 1 = 0.59375x ≈ 0.6x    (38/64)
+ *   gear 9 = 1.09375x ≈ 1.1x    (70/64)
+ *   geometric (constant-ratio) series: r = (70/38)^(1/8) ≈ 1.079355
+ *
+ * Computed as: val[i] = round(38 * r^i),  i = 0..8
+ */
+static const uint8_t SCROLL_SPEED_FACTOR_Q10_6[9] = {
+    38, 41, 44, 48, 52, 56, 60, 65, 70
+};
+
 /* Scroll threshold: gear 1→9, gear 9→1  (higher gear = more responsive) */
 static inline uint8_t scroll_gear_threshold(int gear)
 {
-    /* Wider gear range: gear 9 ≈ 20× faster than gear 1 */
-    int t = 11 - clamp_int(gear, 1, 9);
-    return (uint8_t)(t * t + t + 2);
+    return (uint8_t)(12 - clamp_int(gear, 1, 9));
 }
+
+/* ==================================================================
+ *  R13: Inertia helpers
+ * ================================================================== */
+
+/*
+ * @brief Apply one tick of exponential decay to the inertia state.
+ *        v_next = (v * (256 - decay)) >> 8
+ *        When velocity falls below INERTIA_THRESHOLD in both axes,
+ *        inertia is deactivated.
+ */
+static bool a320_inertia_tick(struct a320_inertia *inertia, bool is_scroll_mode,
+                              const struct device *dev)
+{
+    int16_t vx = (int16_t)(((int32_t)inertia->vx * (256 - inertia->decay)) >> 8);
+    int16_t vy = (int16_t)(((int32_t)inertia->vy * (256 - inertia->decay)) >> 8);
+
+    if (abs(vx) < INERTIA_THRESHOLD && abs(vy) < INERTIA_THRESHOLD) {
+        inertia->active = false;
+        inertia->vx = 0;
+        inertia->vy = 0;
+        return false;  /* inertia ended */
+    }
+
+    inertia->vx = vx;
+    inertia->vy = vy;
+
+    if (is_scroll_mode) {
+        input_report_rel(dev, INPUT_REL_HWHEEL, -(vx >> 2), false, K_FOREVER);
+        input_report_rel(dev, INPUT_REL_WHEEL,  -(vy >> 2), true,  K_FOREVER);
+    } else {
+        input_report_rel(dev, INPUT_REL_X, vx >> 2, false, K_FOREVER);
+        input_report_rel(dev, INPUT_REL_Y, vy >> 2, true,  K_FOREVER);
+    }
+
+    return true;  /* inertia still active */
+}
+
+/*
+ * @brief Check whether inertia glide is enabled on the given layer.
+ *        Inertia is enabled on normal mouse layers, scroll temp (4),
+ *        rev mouse (6), rev scroll (7), and scroll fixed (8).
+ */
+static inline bool a320_inertia_layer_allowed(uint8_t layer)
+{
+    /* All handled layers get inertia.
+     * Layer 4 = L_SCROLL_TEMP (scroll),
+     * Layer 6 = rev mouse,
+     * Layer 7 = rev scroll,
+     * Layer 8 = L_SCROLL_FIXED (scroll),
+     * default (other) = normal mouse.
+     * Layer 0 (base) doesn't reach here but won't hurt.
+     */
+    (void)layer;
+    return true;
+}
+
+static void a320_inertia_update_on_touch(struct a320_inertia *inertia,
+                                         int32_t velocity_x_q8_8,
+                                         int32_t velocity_y_q8_8,
+                                         bool allowed)
+{
+    if (!allowed) {
+        inertia->active = false;
+        inertia->vx = 0;
+        inertia->vy = 0;
+        return;
+    }
+    inertia->vx = (int16_t)velocity_x_q8_8;
+    inertia->vy = (int16_t)velocity_y_q8_8;
+    inertia->active = true;
+}
+
+/* ==================================================================
+ *  End R13 helpers
+ * ================================================================== */
 
 static void a320_poll_work_handler(struct k_work *work)
 {
@@ -103,9 +380,15 @@ static void a320_poll_work_handler(struct k_work *work)
     struct a320_data *data = CONTAINER_OF(dwork, struct a320_data, poll_work);
     const struct device *dev = data->dev;
 
+    /* ---- R13: Sync decay LUT on first use after change ---- */
+    inertia_state.decay = INERTIA_DECAY_LUT[current_inertia_decay_idx];
+
     int pin_state = gpio_pin_get(motion_gpio_dev, MOTION_GPIO_PIN);
 
     if (pin_state == 0) {
+        /* ============================================================
+         *  TOUCH ACTIVE: read motion, compute velocity, update inertia
+         * ============================================================ */
         int16_t raw_dx = 0, raw_dy = 0;
 
         if (a320_read_motion(dev, &raw_dx, &raw_dy) != 0) {
@@ -113,8 +396,12 @@ static void a320_poll_work_handler(struct k_work *work)
             return;
         }
 
+        /* ---- R4: Apply filter pipeline (Baseline → LPF → Rate Limit → Accel Comp) ---- */
+        a320_filter_pipeline(&raw_dx, &raw_dy);
+
         /* ---- Query current active layer (Section 2.3) ---- */
         uint8_t active_layer = zmk_keymap_highest_layer_active();
+        bool inertia_allowed = a320_inertia_layer_allowed(active_layer);
 
         if (active_layer == 4) {
 
@@ -133,43 +420,96 @@ static void a320_poll_work_handler(struct k_work *work)
                 uint8_t threshold = scroll_gear_threshold(current_scroll_gear);
 
                 if (scroll_samples >= threshold) {
-                    int16_t w_x = -(scroll_acc_x / 24);
-                    int16_t w_y = -(scroll_acc_y / 24);
+                    int gear_idx = clamp_int(current_scroll_gear, 1, 9) - 1;
+                    int32_t w_x_acc = -(scroll_acc_x * (int32_t)SCROLL_SPEED_FACTOR_Q10_6[gear_idx]);
+                    int32_t w_y_acc = -(scroll_acc_y * (int32_t)SCROLL_SPEED_FACTOR_Q10_6[gear_idx]);
+                    int16_t w_x = (int16_t)(w_x_acc / (24 * 64));
+                    int16_t w_y = (int16_t)(w_y_acc / (24 * 64));
 
-                    if (w_y > 1)  w_y = 1;
-                    else if (w_y < -1) w_y = -1;
-                    if (w_x > 1)  w_x = 1;
-                    else if (w_x < -1) w_x = -1;
+                    if (w_y > 3)  w_y = 3;
+                    else if (w_y < -3) w_y = -3;
+                    if (w_x > 3)  w_x = 3;
+                    else if (w_x < -3) w_x = -3;
 
                     input_report_rel(dev, INPUT_REL_HWHEEL, -w_x, false, K_FOREVER);
                     input_report_rel(dev, INPUT_REL_WHEEL,   w_y, true,  K_FOREVER);
 
+                    /* R13: Update inertia velocity in scroll factor units (Q8.8) */
+                    a320_inertia_update_on_touch(&inertia_state,
+                                                 (int32_t)scroll_acc_x * 256 / 24,
+                                                 (int32_t)scroll_acc_y * 256 / 24,
+                                                 inertia_allowed);
+
                     scroll_acc_x = 0;
                     scroll_acc_y = 0;
                     scroll_samples = 0;
+                } else {
+                    /* Accumulating — update inertia with partial accumulation */
+                    a320_inertia_update_on_touch(&inertia_state,
+                                                 (int32_t)scroll_acc_x * 256 / threshold,
+                                                 (int32_t)scroll_acc_y * 256 / threshold,
+                                                 inertia_allowed);
                 }
             }
             touched = true;
 
-        } else if (active_layer == 8) {
+        } else if (active_layer == 6) {
 
             /* ==============================================
-             *  REVERSE MOUSE  —  X/Y inverted
+             *  L6 REV MOUSE  —  configurable axis mapping
+             *
+             *  Compile-time choice via Kconfig:
+             *    A320_L6_DIR_STANDARD  —  dx→X, dy→Y
+             *    A320_L6_DIR_SWAP_INV  —  dx→-Y, dy→-X  (default)
+             *    A320_L6_DIR_INV_X_ONLY — dx→-X, dy→Y
+             *    A320_L6_DIR_INV_Y_ONLY — dx→X, dy→-Y
              * ============================================== */
             int16_t max_raw = MAX(abs(raw_dx), abs(raw_dy));
 
-            float factor;
+            /* Fixed-point factor: Q8.8 */
+            int32_t factor_q8_8;
             if (max_raw <= 2) {
-                factor = 1.0f;
+                factor_q8_8 = 256; /* 1.0 in Q8.8 */
             } else {
-                float base  = 0.02f + (current_mouse_gear * current_mouse_gear * 0.03f);
-                float accel = 1.0f + ((max_raw - 2) * 0.05f);
-                if (accel > 2.5f) accel = 2.5f;
-                factor = base * accel;
+                /* Base speed from geometric LUT, capped to [1,10] */
+                int idx = clamp_int(current_mouse_gear, 1, 10) - 1;
+                int16_t base_q8_8 = MOUSE_BASE_FACTOR_Q8_8[idx];
+
+                /* Accel: 1.0 + (max_raw - 2) * 0.05  →  256 + (max_raw - 2) * 13 */
+                int32_t accel_q8_8 = 256 + ((int32_t)(max_raw - 2) * 13);
+                /* Apply configurable accel cap from profile LUT */
+                int accel_profile_idx = clamp_int(current_accel_profile, 1, 5) - 1;
+                int16_t accel_cap = ACCEL_PROFILE_CAP_Q8_8[accel_profile_idx];
+                if (accel_q8_8 > accel_cap) accel_q8_8 = accel_cap;
+
+                factor_q8_8 = (base_q8_8 * accel_q8_8) >> 8;
             }
 
-            input_report_rel(dev, INPUT_REL_X, (int16_t)(-raw_dx * factor), false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)(-raw_dy * factor), true,  K_FOREVER);
+            int32_t velocity_x_q8_8, velocity_y_q8_8;
+#if CONFIG_A320_L6_DIR_STANDARD
+            velocity_x_q8_8 = (raw_dx * factor_q8_8) >> 8;
+            velocity_y_q8_8 = (raw_dy * factor_q8_8) >> 8;
+            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+#elif CONFIG_A320_L6_DIR_SWAP_INV
+            velocity_x_q8_8 = (-raw_dy * factor_q8_8) >> 8;
+            velocity_y_q8_8 = (-raw_dx * factor_q8_8) >> 8;
+            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+#elif CONFIG_A320_L6_DIR_INV_X_ONLY
+            velocity_x_q8_8 = (-raw_dx * factor_q8_8) >> 8;
+            velocity_y_q8_8 = (raw_dy * factor_q8_8) >> 8;
+            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+#elif CONFIG_A320_L6_DIR_INV_Y_ONLY
+            velocity_x_q8_8 = (raw_dx * factor_q8_8) >> 8;
+            velocity_y_q8_8 = (-raw_dy * factor_q8_8) >> 8;
+            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+#endif
+            /* R13: Update inertia with scaled velocity */
+            a320_inertia_update_on_touch(&inertia_state, velocity_x_q8_8, velocity_y_q8_8,
+                                         inertia_allowed);
             touched = true;
 
         } else if (active_layer == 7) {
@@ -189,20 +529,35 @@ static void a320_poll_work_handler(struct k_work *work)
                 uint8_t threshold = scroll_gear_threshold(current_scroll_gear);
 
                 if (scroll_samples >= threshold) {
-                    int16_t w_x = scroll_acc_x / 24;
-                    int16_t w_y = scroll_acc_y / 24; /* not negated → reversed direction */
+                    int gear_idx = clamp_int(current_scroll_gear, 1, 9) - 1;
+                    int32_t w_x_acc = scroll_acc_x * (int32_t)SCROLL_SPEED_FACTOR_Q10_6[gear_idx];
+                    int32_t w_y_acc = scroll_acc_y * (int32_t)SCROLL_SPEED_FACTOR_Q10_6[gear_idx];
+                    int16_t w_x = (int16_t)(w_x_acc / (24 * 64));
+                    int16_t w_y = (int16_t)(w_y_acc / (24 * 64)); /* not negated → reversed direction */
 
-                    if (w_y > 1)  w_y = 1;
-                    else if (w_y < -1) w_y = -1;
-                    if (w_x > 1)  w_x = 1;
-                    else if (w_x < -1) w_x = -1;
+                    if (w_y > 3)  w_y = 3;
+                    else if (w_y < -3) w_y = -3;
+                    if (w_x > 3)  w_x = 3;
+                    else if (w_x < -3) w_x = -3;
 
                     input_report_rel(dev, INPUT_REL_HWHEEL, w_x, false, K_FOREVER);
                     input_report_rel(dev, INPUT_REL_WHEEL,  w_y, true,  K_FOREVER);
 
+                    /* R13: Update inertia velocity in scroll factor units (Q8.8) */
+                    a320_inertia_update_on_touch(&inertia_state,
+                                                 (int32_t)scroll_acc_x * 256 / 24,
+                                                 (int32_t)scroll_acc_y * 256 / 24,
+                                                 inertia_allowed);
+
                     scroll_acc_x = 0;
                     scroll_acc_y = 0;
                     scroll_samples = 0;
+                } else {
+                    /* Accumulating — update inertia with partial accumulation */
+                    a320_inertia_update_on_touch(&inertia_state,
+                                                 (int32_t)scroll_acc_x * 256 / (int32_t)threshold,
+                                                 (int32_t)scroll_acc_y * 256 / (int32_t)threshold,
+                                                 inertia_allowed);
                 }
             }
             touched = true;
@@ -214,23 +569,46 @@ static void a320_poll_work_handler(struct k_work *work)
              * ============================================== */
             int16_t max_raw = MAX(abs(raw_dx), abs(raw_dy));
 
-            float factor;
+            /* Fixed-point factor: Q8.8 */
+            int32_t factor_q8_8;
             if (max_raw <= 2) {
                 /* Low-speed precision: 1:1 pixel (Section 2.2) */
-                factor = 1.0f;
+                factor_q8_8 = 256; /* 1.0 in Q8.8 */
             } else {
-                /* Dynamic acceleration */
-                float base  = 0.02f + (current_mouse_gear * current_mouse_gear * 0.03f);
-                float accel = 1.0f + ((max_raw - 2) * 0.05f);
-                if (accel > 2.5f) accel = 2.5f;
-                factor = base * accel;
+                /* Base speed from geometric LUT, capped to [1,10] */
+                int idx = clamp_int(current_mouse_gear, 1, 10) - 1;
+                int16_t base_q8_8 = MOUSE_BASE_FACTOR_Q8_8[idx];
+
+                /* Accel: 1.0 + (max_raw - 2) * 0.05  →  256 + (max_raw - 2) * 13 */
+                int32_t accel_q8_8 = 256 + ((int32_t)(max_raw - 2) * 13);
+                /* Apply configurable accel cap from profile LUT */
+                int accel_profile_idx = clamp_int(current_accel_profile, 1, 5) - 1;
+                int16_t accel_cap = ACCEL_PROFILE_CAP_Q8_8[accel_profile_idx];
+                if (accel_q8_8 > accel_cap) accel_q8_8 = accel_cap;
+
+                factor_q8_8 = (base_q8_8 * accel_q8_8) >> 8;
             }
 
-            input_report_rel(dev, INPUT_REL_X, (int16_t)(raw_dx * factor), false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)(raw_dy * factor), true,  K_FOREVER);
+            int32_t velocity_x_q8_8 = (raw_dx * factor_q8_8) >> 8;
+            int32_t velocity_y_q8_8 = (raw_dy * factor_q8_8) >> 8;
+
+            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+
+            /* R13: Update inertia with scaled velocity */
+            a320_inertia_update_on_touch(&inertia_state, velocity_x_q8_8, velocity_y_q8_8,
+                                         inertia_allowed);
             touched = true;
         }
     } else {
+        /* ============================================================
+         *  TOUCH INACTIVE  —  apply inertia decay if active
+         * ============================================================ */
+        if (inertia_state.active) {
+            uint8_t active_layer = zmk_keymap_highest_layer_active();
+            bool is_scroll_mode = (active_layer == 4 || active_layer == 7);
+            a320_inertia_tick(&inertia_state, is_scroll_mode, dev);
+        }
         touched = false;
     }
 

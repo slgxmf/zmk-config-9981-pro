@@ -28,4 +28,61 @@ config INPUT_A320_INIT_PRIORITY
   int "A320 Initialization Priority"
   default 90
 
+choice
+	prompt "L6 (REV_MOUSE) direction mapping"
+	default A320_L6_DIR_SWAP_INV
+	help
+	  Select how raw (dx, dy) maps to REL_(X,Y) on Layer 6.
+	  This is a compile-time choice; change requires rebuild.
+
+config A320_L6_DIR_STANDARD
+	bool "Standard (dx→X, dy→Y)"
+
+config A320_L6_DIR_SWAP_INV
+	bool "Swap+Invert (dx→-Y, dy→-X) — default, current behavior"
+
+config A320_L6_DIR_INV_X_ONLY
+	bool "Invert X only (dx→-X, dy→Y)"
+
+config A320_L6_DIR_INV_Y_ONLY
+	bool "Invert Y only (dx→X, dy→-Y)"
+
+endchoice
+
+config A320_FILTER_BASELINE_ALPHA
+	int "Baseline EMA alpha (0-255, 0=no tracking, default=4)"
+	default 4
+	range 0 255
+	help
+	  Exponential moving average factor (Q8.0) for DC offset tracking.
+	  0=disabled, 4≈0.0156 (slow), 16≈0.0625 (medium), 64≈0.25 (fast).
+
+config A320_FILTER_LPF_ALPHA
+	int "Low-pass filter alpha (0-255, 0=no filtering, default=128)"
+	default 128
+	range 0 255
+	help
+	  Low-pass filter coefficient (Q8.0) for jitter smoothing.
+	  0=max filtering, 128=moderate (default), 255=bypass.
+
+config A320_FILTER_RATE_LIMIT
+	int "Rate limiter max delta per axis (0-127, 0=disabled, default=8)"
+	default 8
+	range 0 127
+	help
+	  Maximum change per poll tick per axis. Prevents large spikes.
+	  0=disabled, 4=tight, 8=moderate (default), 16=loose.
+
+config A320_FILTER_ACCEL_GAIN
+	int "Acceleration compensation gain (0-255, 0=disabled, default=32)"
+	default 32
+	range 0 255
+	help
+	  Lead compensation gain (Q8.0) to reduce filter lag on fast changes.
+	  0=disabled, 32≈0.125 (default, conservative), 64≈0.25 (aggressive).
+
+config A320_FILTER_ENABLE_KEY
+	string "Filter preset selection (yes/"preset_N" key)"
+	default "yes"
+
 endmenu

@@ -1,0 +1,12 @@
+description: Button swap toggle for LCLK/RCLK
+
+compatible: "zmk,behavior-swap-buttons"
+
+properties:
+  "#binding-cells":
+    type: int
+    required: true
+    const: 0
+  label:
+    type: string
+    required: false

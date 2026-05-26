@@ -1,0 +1,16 @@
+description: Mouse key press/release with optional LCLK/RCLK swap
+
+compatible: "zmk,behavior-mouse-key-press-swap"
+
+properties:
+  "#binding-cells":
+    type: int
+    required: true
+    const: 1
+  label:
+    type: string
+    required: false
+    deprecated: true
+
+binding-cells:
+  - param1
