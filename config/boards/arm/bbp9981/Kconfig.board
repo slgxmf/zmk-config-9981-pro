@@ -82,7 +82,7 @@ config A320_FILTER_ACCEL_GAIN
 	  0=disabled, 32≈0.125 (default, conservative), 64≈0.25 (aggressive).
 
 config A320_FILTER_ENABLE_KEY
-	string "Filter preset selection (yes/"preset_N" key)"
+	string "Filter preset selection (yes/preset_N key)"
 	default "yes"
 
 endmenu
