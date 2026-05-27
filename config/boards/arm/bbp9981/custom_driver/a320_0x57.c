@@ -401,6 +401,18 @@ static void a320_poll_work_handler(struct k_work *work)
 
         /* ---- Query current active layer (Section 2.3) ---- */
         uint8_t active_layer = zmk_keymap_highest_layer_active();
+
+        /* ---- L3-002: Reset scroll accumulators on layer transition ---- */
+        {
+            static uint8_t prev_active_layer = 0xFF;
+            if (prev_active_layer != 0xFF && active_layer != prev_active_layer) {
+                scroll_acc_x = 0;
+                scroll_acc_y = 0;
+                scroll_samples = 0;
+            }
+            prev_active_layer = active_layer;
+        }
+
         bool inertia_allowed = a320_inertia_layer_allowed(active_layer);
 
         if (active_layer == 4) {
