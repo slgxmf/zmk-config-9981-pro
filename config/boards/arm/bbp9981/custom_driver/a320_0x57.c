@@ -89,6 +89,7 @@ static const struct device *motion_gpio_dev;
 
 /* ==== Touch status flag ==== */
 static bool touched = false;
+static bool first_touch = true;
 
 /* ---- Scroll-mode accumulation ---- */
 static int16_t scroll_acc_x = 0;
@@ -379,6 +380,10 @@ static void a320_poll_work_handler(struct k_work *work)
             accel_prev_y = 0;
         }
 
+        /* ---- Save unfiltered values before pipeline (fix A: scroll uses unfiltered) ---- */
+        int16_t unfiltered_dx = raw_dx;
+        int16_t unfiltered_dy = raw_dy;
+
         /* ---- R4: Apply filter pipeline (LPF → Rate Limit → Accel Comp) ---- */
         a320_filter_pipeline(&raw_dx, &raw_dy);
 
@@ -392,6 +397,14 @@ static void a320_poll_work_handler(struct k_work *work)
                 scroll_acc_x = 0;
                 scroll_acc_y = 0;
                 scroll_samples = 0;
+                /* Fix B: reset filter state on layer switch */
+                lpf_state_x = 0;
+                lpf_state_y = 0;
+                rlim_prev_x = 0;
+                rlim_prev_y = 0;
+                accel_prev_x = 0;
+                accel_prev_y = 0;
+                first_touch = true;
             }
             prev_active_layer = active_layer;
         }
@@ -408,8 +421,8 @@ static void a320_poll_work_handler(struct k_work *work)
                 scroll_acc_y = 0;
                 scroll_samples = 0;
             } else {
-                scroll_acc_x += raw_dx;
-                scroll_acc_y += raw_dy;
+                scroll_acc_x += unfiltered_dx;
+                scroll_acc_y += unfiltered_dy;
                 scroll_samples++;
 
                 uint8_t threshold = scroll_gear_threshold(current_scroll_gear);
@@ -502,9 +515,24 @@ static void a320_poll_work_handler(struct k_work *work)
             input_report_rel(dev, INPUT_REL_X, Q8_8_TO_INT_ROUND(velocity_x_q8_8), false, K_FOREVER);
             input_report_rel(dev, INPUT_REL_Y, Q8_8_TO_INT_ROUND(velocity_y_q8_8), true,  K_FOREVER);
 #endif
-            /* R13: Update inertia with scaled velocity */
-            a320_inertia_update_on_touch(&inertia_state, velocity_x_q8_8, velocity_y_q8_8,
-                                         inertia_allowed);
+            /* BH-H4: Inertia uses unfiltered velocity (skip LPF/Rate Limiter, keep Accel Comp) */
+            {
+#if CONFIG_A320_L6_DIR_STANDARD
+                int32_t inertia_vx_q8_8 = (unfiltered_dx * factor_q8_8) >> 8;
+                int32_t inertia_vy_q8_8 = (unfiltered_dy * factor_q8_8) >> 8;
+#elif CONFIG_A320_L6_DIR_SWAP_INV
+                int32_t inertia_vx_q8_8 = (-unfiltered_dy * factor_q8_8) >> 8;
+                int32_t inertia_vy_q8_8 = (-unfiltered_dx * factor_q8_8) >> 8;
+#elif CONFIG_A320_L6_DIR_INV_X_ONLY
+                int32_t inertia_vx_q8_8 = (-unfiltered_dx * factor_q8_8) >> 8;
+                int32_t inertia_vy_q8_8 = (unfiltered_dy * factor_q8_8) >> 8;
+#elif CONFIG_A320_L6_DIR_INV_Y_ONLY
+                int32_t inertia_vx_q8_8 = (unfiltered_dx * factor_q8_8) >> 8;
+                int32_t inertia_vy_q8_8 = (-unfiltered_dy * factor_q8_8) >> 8;
+#endif
+                a320_inertia_update_on_touch(&inertia_state, inertia_vx_q8_8, inertia_vy_q8_8,
+                                             inertia_allowed);
+            }
             touched = true;
 
         } else if (active_layer == 7) {
@@ -517,8 +545,8 @@ static void a320_poll_work_handler(struct k_work *work)
                 scroll_acc_y = 0;
                 scroll_samples = 0;
             } else {
-                scroll_acc_x += raw_dx;
-                scroll_acc_y += raw_dy;
+                scroll_acc_x += unfiltered_dx;
+                scroll_acc_y += unfiltered_dy;
                 scroll_samples++;
 
                 uint8_t threshold = scroll_gear_threshold(current_scroll_gear);
@@ -591,8 +619,10 @@ static void a320_poll_work_handler(struct k_work *work)
             input_report_rel(dev, INPUT_REL_X, Q8_8_TO_INT_ROUND(velocity_x_q8_8), false, K_FOREVER);
             input_report_rel(dev, INPUT_REL_Y, Q8_8_TO_INT_ROUND(velocity_y_q8_8), true,  K_FOREVER);
 
-            /* R13: Update inertia with scaled velocity */
-            a320_inertia_update_on_touch(&inertia_state, velocity_x_q8_8, velocity_y_q8_8,
+            /* BH-H4: Inertia uses unfiltered velocity (skip LPF/Rate Limiter, keep Accel Comp) */
+            int32_t inertia_vx_q8_8 = (unfiltered_dx * factor_q8_8) >> 8;
+            int32_t inertia_vy_q8_8 = (unfiltered_dy * factor_q8_8) >> 8;
+            a320_inertia_update_on_touch(&inertia_state, inertia_vx_q8_8, inertia_vy_q8_8,
                                          inertia_allowed);
             touched = true;
         }
@@ -605,6 +635,11 @@ static void a320_poll_work_handler(struct k_work *work)
             bool is_scroll_mode = (active_layer == 4 || active_layer == 7);
             a320_inertia_tick(&inertia_state, is_scroll_mode, dev);
         }
+        /* Fix C: Reset scroll accumulators and first_touch on release */
+        scroll_acc_x = 0;
+        scroll_acc_y = 0;
+        scroll_samples = 0;
+        first_touch = true;
         touched = false;
 
         /* R4-fix: Reset filter state on touch release to prevent drift */
