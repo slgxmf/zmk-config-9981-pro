@@ -400,8 +400,6 @@ static void a320_poll_work_handler(struct k_work *work)
                 /* Fix B: reset filter state on layer switch */
                 lpf_state_x = 0;
                 lpf_state_y = 0;
-                rlim_prev_x = 0;
-                rlim_prev_y = 0;
                 accel_prev_x = 0;
                 accel_prev_y = 0;
                 first_touch = true;
