@@ -96,10 +96,6 @@ static uint8_t scroll_samples = 0;
  *       All Kconfig-configurable, Q8.0 fixed-point.
  * ================================================================== */
 
-/* --- Baseline tracking (EMA DC offset removal) --- */
-static int16_t baseline_ema_x = 0;
-static int16_t baseline_ema_y = 0;
-
 /* --- LPF low-pass filter state --- */
 static int16_t lpf_state_x = 0;
 static int16_t lpf_state_y = 0;
@@ -150,16 +146,13 @@ static inline int clamp_int(int val, int lo, int hi)
 
 /* ==================================================================
  *  3b.  FILTER PIPELINE  (R4)
- *       Baseline (EMA) → Low-Pass (1st-order IIR) → Rate Limiter
+ *       Low-Pass (1st-order IIR) → Rate Limiter
  *       → Acceleration Compensation (lead)
  *
  *       All arithmetic in Q8.0 fixed-point. All parameters Kconfig.
  *       Returns dx, dy as the filtered output (in-out params).
  * ================================================================== */
 
-#ifndef CONFIG_A320_FILTER_BASELINE_ALPHA
-#define CONFIG_A320_FILTER_BASELINE_ALPHA 4
-#endif
 #ifndef CONFIG_A320_FILTER_LPF_ALPHA
 #define CONFIG_A320_FILTER_LPF_ALPHA 128
 #endif
@@ -176,24 +169,7 @@ static void a320_filter_pipeline(int16_t *dx, int16_t *dy)
     int16_t raw_dy = *dy;
 
     /* ----------------------------------------------------------
-     *  Stage 1: Baseline tracking (EMA DC offset removal)
-     *  Slowly tracks the sensor's resting offset.
-     *  filtered = raw - baseline
-     *  baseline += (raw - baseline) * alpha / 256
-     * ---------------------------------------------------------- */
-    if (CONFIG_A320_FILTER_BASELINE_ALPHA > 0) {
-        int16_t offset_x = raw_dx - baseline_ema_x;
-        int16_t offset_y = raw_dy - baseline_ema_y;
-
-        baseline_ema_x += (int16_t)((offset_x * CONFIG_A320_FILTER_BASELINE_ALPHA) >> 8);
-        baseline_ema_y += (int16_t)((offset_y * CONFIG_A320_FILTER_BASELINE_ALPHA) >> 8);
-
-        *dx = offset_x;
-        *dy = offset_y;
-    }
-
-    /* ----------------------------------------------------------
-     *  Stage 2: Low-Pass Filter (1st-order IIR)
+     *  Stage 1: Low-Pass Filter (1st-order IIR)
      *  Smooths jitter by blending with previous state.
      *  out = prev + (in - prev) * alpha / 256
      *  alpha=0 → no filtering, alpha=255 → full pass-through
@@ -207,7 +183,7 @@ static void a320_filter_pipeline(int16_t *dx, int16_t *dy)
     }
 
     /* ----------------------------------------------------------
-     *  Stage 3: Rate Limiter (jitter spike suppression)
+     *  Stage 2: Rate Limiter (jitter spike suppression)
      *  Caps delta between successive readings.
      *  delta = clamp(current - prev, -limit, +limit)
      *  out = prev + delta
@@ -232,7 +208,7 @@ static void a320_filter_pipeline(int16_t *dx, int16_t *dy)
     }
 
     /* ----------------------------------------------------------
-     *  Stage 4: Acceleration Compensation (lead)
+     *  Stage 3: Acceleration Compensation (lead)
      *  When velocity changes, add a fraction of the delta to
      *  reduce perceived lag from earlier filtering.
      *  out += (out - prev_accel) * gain / 256
@@ -396,7 +372,7 @@ static void a320_poll_work_handler(struct k_work *work)
             return;
         }
 
-        /* ---- R4: Apply filter pipeline (Baseline → LPF → Rate Limit → Accel Comp) ---- */
+        /* ---- R4: Apply filter pipeline (LPF → Rate Limit → Accel Comp) ---- */
         a320_filter_pipeline(&raw_dx, &raw_dy);
 
         /* ---- Query current active layer (Section 2.3) ---- */
@@ -622,6 +598,14 @@ static void a320_poll_work_handler(struct k_work *work)
             a320_inertia_tick(&inertia_state, is_scroll_mode, dev);
         }
         touched = false;
+
+        /* R4-fix: Reset filter state on touch release to prevent drift */
+        lpf_state_x = 0;
+        lpf_state_y = 0;
+        rlim_prev_x = 0;
+        rlim_prev_y = 0;
+        accel_prev_x = 0;
+        accel_prev_y = 0;
     }
 
     k_work_reschedule(&data->poll_work, K_MSEC(CONFIG_A320_POLL_INTERVAL_MS));

@@ -49,14 +49,6 @@ config A320_L6_DIR_INV_Y_ONLY
 
 endchoice
 
-config A320_FILTER_BASELINE_ALPHA
-	int "Baseline EMA alpha (0-255, 0=no tracking, default=4)"
-	default 4
-	range 0 255
-	help
-	  Exponential moving average factor (Q8.0) for DC offset tracking.
-	  0=disabled, 4≈0.0156 (slow), 16≈0.0625 (medium), 64≈0.25 (fast).
-
 config A320_FILTER_LPF_ALPHA
 	int "Low-pass filter alpha (0-255, 0=no filtering, default=128)"
 	default 128
