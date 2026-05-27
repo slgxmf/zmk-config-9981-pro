@@ -49,6 +49,8 @@ static bool smoothstep_running = false;
 
 static struct k_work_delayable smoothstep_work;
 
+static void set_led_brightness(uint8_t level);
+
 static void set_led_brightness_smoothstep(struct k_work *work);
 
 static void smoothstep_fade_to(uint8_t target_brt) {

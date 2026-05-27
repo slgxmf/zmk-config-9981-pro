@@ -47,4 +47,4 @@ static int autoclear_init(void)
     return 0;
 }
 
-SYS_INIT(autoclear_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+SYS_INIT(autoclear_init, APPLICATION, 90);
