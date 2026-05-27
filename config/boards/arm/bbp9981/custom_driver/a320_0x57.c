@@ -325,11 +325,11 @@ static bool a320_inertia_tick(struct a320_inertia *inertia, bool is_scroll_mode,
     inertia->vy = vy;
 
     if (is_scroll_mode) {
-        input_report_rel(dev, INPUT_REL_HWHEEL, -(vx >> 2), false, K_FOREVER);
-        input_report_rel(dev, INPUT_REL_WHEEL,  -(vy >> 2), true,  K_FOREVER);
+        input_report_rel(dev, INPUT_REL_HWHEEL, -(vx >> 4), false, K_FOREVER);
+        input_report_rel(dev, INPUT_REL_WHEEL,  -(vy >> 4), true,  K_FOREVER);
     } else {
-        input_report_rel(dev, INPUT_REL_X, vx >> 2, false, K_FOREVER);
-        input_report_rel(dev, INPUT_REL_Y, vy >> 2, true,  K_FOREVER);
+        input_report_rel(dev, INPUT_REL_X, vx >> 4, false, K_FOREVER);
+        input_report_rel(dev, INPUT_REL_Y, vy >> 4, true,  K_FOREVER);
     }
 
     return true;  /* inertia still active */
