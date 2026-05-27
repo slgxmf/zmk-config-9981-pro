@@ -7,6 +7,7 @@
  */
 
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zephyr/settings/settings.h>
 #include <zmk/ble.h>
 
