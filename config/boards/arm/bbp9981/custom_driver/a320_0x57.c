@@ -57,20 +57,20 @@ static bool swap_buttons = false;      /* LCLK↔RCLK swap flag */
  *   decay=96 → (256-96)/256 = 0.625 → τ ≈ 20 ms  (near-instant)
  */
 static const uint8_t INERTIA_DECAY_LUT[4] = {
-    32,  /* τ≈75ms (quick stop) */
-    48,  /* τ≈48ms (aggressive — default) */
+    48,  /* τ≈48ms (aggressive) */
     64,  /* τ≈35ms (very quick) */
     96,  /* τ≈20ms (near-instant) */
+    128, /* τ≈14ms (instant stop) */
 };
-#define INERTIA_DEFAULT_DECAY_IDX 1   /* τ≈48ms (aggressive) */
-#define INERTIA_THRESHOLD 4           /* Stop inertia below this velocity */
+#define INERTIA_DEFAULT_DECAY_IDX 1   /* τ≈35ms (very quick) */
+#define INERTIA_THRESHOLD 6           /* Stop inertia below this velocity */
 
 static int current_inertia_decay_idx = INERTIA_DEFAULT_DECAY_IDX;
 
 static struct a320_inertia inertia_state = {
     .vx = 0,
     .vy = 0,
-    .decay = 8,  /* INERTIA_DECAY_LUT[INERTIA_DEFAULT_DECAY_IDX] */
+    .decay = INERTIA_DECAY_LUT[INERTIA_DEFAULT_DECAY_IDX],
     .active = false,
 };
 
@@ -105,9 +105,7 @@ static uint8_t scroll_samples = 0;
 static int16_t lpf_state_x = 0;
 static int16_t lpf_state_y = 0;
 
-/* --- Rate limiter previous values --- */
-static int16_t rlim_prev_x = 0;
-static int16_t rlim_prev_y = 0;
+/* Rate limiter removed per DECISION.md */
 
 /* --- Accel compensation previous values --- */
 static int16_t accel_prev_x = 0;
@@ -173,10 +171,7 @@ static inline int clamp_int(int val, int lo, int hi)
  * ================================================================== */
 
 #ifndef CONFIG_A320_FILTER_LPF_ALPHA
-#define CONFIG_A320_FILTER_LPF_ALPHA 128
-#endif
-#ifndef CONFIG_A320_FILTER_RATE_LIMIT
-#define CONFIG_A320_FILTER_RATE_LIMIT 8
+#define CONFIG_A320_FILTER_LPF_ALPHA 224
 #endif
 #ifndef CONFIG_A320_FILTER_ACCEL_GAIN
 #define CONFIG_A320_FILTER_ACCEL_GAIN 32
@@ -199,31 +194,6 @@ static void a320_filter_pipeline(int16_t *dx, int16_t *dy)
         lpf_state_y += (int16_t)(((*dy - lpf_state_y) * lpf_alpha) >> 8);
         *dx = lpf_state_x;
         *dy = lpf_state_y;
-    }
-
-    /* ----------------------------------------------------------
-     *  Stage 2: Rate Limiter (jitter spike suppression)
-     *  Caps delta between successive readings.
-     *  delta = clamp(current - prev, -limit, +limit)
-     *  out = prev + delta
-     * ---------------------------------------------------------- */
-    if (CONFIG_A320_FILTER_RATE_LIMIT > 0) {
-        int16_t rlim = (int16_t)CONFIG_A320_FILTER_RATE_LIMIT;
-        int16_t delta_x = *dx - rlim_prev_x;
-        int16_t delta_y = *dy - rlim_prev_y;
-
-        if (delta_x > rlim)  delta_x = rlim;
-        if (delta_x < -rlim) delta_x = -rlim;
-        if (delta_y > rlim)  delta_y = rlim;
-        if (delta_y < -rlim) delta_y = -rlim;
-
-        rlim_prev_x += delta_x;
-        rlim_prev_y += delta_y;
-        *dx = rlim_prev_x;
-        *dy = rlim_prev_y;
-    } else {
-        rlim_prev_x = *dx;
-        rlim_prev_y = *dy;
     }
 
     /* ----------------------------------------------------------
@@ -395,11 +365,16 @@ static void a320_poll_work_handler(struct k_work *work)
          *      Must happen BEFORE a320_filter_pipeline so filter
          *      starts clean on every new touch (not just on release).
          *      Release reset still exists in the inactive branch below. */
+        /* Fix 3: Init LPF from first sensor reading instead of from 0 */
+        static bool first_touch = true;
+        if (first_touch) {
+            lpf_state_x = raw_dx;
+            lpf_state_y = raw_dy;
+            first_touch = false;
+        }
         if (!touched) {
             lpf_state_x = 0;
             lpf_state_y = 0;
-            rlim_prev_x = 0;
-            rlim_prev_y = 0;
             accel_prev_x = 0;
             accel_prev_y = 0;
         }
@@ -635,8 +610,6 @@ static void a320_poll_work_handler(struct k_work *work)
         /* R4-fix: Reset filter state on touch release to prevent drift */
         lpf_state_x = 0;
         lpf_state_y = 0;
-        rlim_prev_x = 0;
-        rlim_prev_y = 0;
         accel_prev_x = 0;
         accel_prev_y = 0;
     }
