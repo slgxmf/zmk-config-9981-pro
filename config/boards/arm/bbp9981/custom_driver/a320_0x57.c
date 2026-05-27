@@ -46,19 +46,24 @@ static bool swap_buttons = false;      /* LCLK↔RCLK swap flag */
 
 /*
  * Precomputed decay values (Q8.0) for poll_interval = 10 ms:
- *   τ = 0.6s → decay_per_tick = 1 - exp(-10/600) ≈ 0.0165 → 4
- *   τ = 0.45s → decay_per_tick = 1 - exp(-10/450) ≈ 0.0220 → 6
- *   τ = 0.3s  → decay_per_tick = 1 - exp(-10/300) ≈ 0.0328 → 8
- *   τ = 0.2s  → decay_per_tick = 1 - exp(-10/200) ≈ 0.0488 → 12
+ *   These represent (256 - decay) = exp(-10ms/τ) in Q8.0.
+ *   Larger decay = faster braking (smaller τ).
+ *
+ *   Fix 2: Quadrupled from original so inertia stops noticeably faster.
+ *
+ *   decay=32 → (256-32)/256 = 0.875 → τ = -10/ln(0.875) ≈ 75 ms  (quick)
+ *   decay=48 → (256-48)/256 = 0.8125 → τ ≈ 48 ms  (aggressive)
+ *   decay=64 → (256-64)/256 = 0.75 → τ ≈ 35 ms  (very quick)
+ *   decay=96 → (256-96)/256 = 0.625 → τ ≈ 20 ms  (near-instant)
  */
 static const uint8_t INERTIA_DECAY_LUT[4] = {
-    4,   /* τ=0.6s (gentle) */
-    6,   /* τ=0.45s (moderate) */
-    8,   /* τ=0.3s (default) */
-    12,  /* τ=0.2s (quick stop) */
+    32,  /* τ≈75ms (quick stop) */
+    48,  /* τ≈48ms (aggressive — default) */
+    64,  /* τ≈35ms (very quick) */
+    96,  /* τ≈20ms (near-instant) */
 };
-#define INERTIA_DEFAULT_DECAY_IDX 2   /* τ=0.3s */
-#define INERTIA_THRESHOLD 2           /* Stop inertia below this velocity */
+#define INERTIA_DEFAULT_DECAY_IDX 1   /* τ≈48ms (aggressive) */
+#define INERTIA_THRESHOLD 4           /* Stop inertia below this velocity */
 
 static int current_inertia_decay_idx = INERTIA_DEFAULT_DECAY_IDX;
 
@@ -143,6 +148,20 @@ static inline int clamp_int(int val, int lo, int hi)
     if (val > hi) return hi;
     return val;
 }
+
+/*
+ * Q8.8 → Q0.0 signed rounding (Fix 1 — direction asymmetry)
+ *
+ * Standard (x + 128) >> 8 truncates negative values incorrectly
+ * when x is negative (C arithmetic right-shift rounds toward -inf).
+ * This macro adds ±128 before shift so that:
+ *   v=256   → (256+128)>>8  = 384>>8  = 1    (was 1, same)
+ *   v=138   → (138+128)>>8  = 266>>8  = 1    (was 0 — fixed!)
+ *   v=1     → (1+128)>>8    = 129>>8  = 0    (still 0, correct for sub-pixel)
+ *   v=-138  → (-138-128)>>8 = -266>>8 = -1   (was -1, same)
+ *   v=-1    → (-1-128)>>8   = -129>>8 = -1   (was -1, same)
+ */
+#define Q8_8_TO_INT_ROUND(v)  (((v) + ((v) >= 0 ? 128 : -128)) >> 8)
 
 /* ==================================================================
  *  3b.  FILTER PIPELINE  (R4)
@@ -372,6 +391,19 @@ static void a320_poll_work_handler(struct k_work *work)
             return;
         }
 
+        /* ---- Fix 3: Reset filter state on touch start ----
+         *      Must happen BEFORE a320_filter_pipeline so filter
+         *      starts clean on every new touch (not just on release).
+         *      Release reset still exists in the inactive branch below. */
+        if (!touched) {
+            lpf_state_x = 0;
+            lpf_state_y = 0;
+            rlim_prev_x = 0;
+            rlim_prev_y = 0;
+            accel_prev_x = 0;
+            accel_prev_y = 0;
+        }
+
         /* ---- R4: Apply filter pipeline (LPF → Rate Limit → Accel Comp) ---- */
         a320_filter_pipeline(&raw_dx, &raw_dy);
 
@@ -477,23 +509,23 @@ static void a320_poll_work_handler(struct k_work *work)
 #if CONFIG_A320_L6_DIR_STANDARD
             velocity_x_q8_8 = (raw_dx * factor_q8_8) >> 8;
             velocity_y_q8_8 = (raw_dy * factor_q8_8) >> 8;
-            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+            input_report_rel(dev, INPUT_REL_X, Q8_8_TO_INT_ROUND(velocity_x_q8_8), false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, Q8_8_TO_INT_ROUND(velocity_y_q8_8), true,  K_FOREVER);
 #elif CONFIG_A320_L6_DIR_SWAP_INV
             velocity_x_q8_8 = (-raw_dy * factor_q8_8) >> 8;
             velocity_y_q8_8 = (-raw_dx * factor_q8_8) >> 8;
-            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+            input_report_rel(dev, INPUT_REL_X, Q8_8_TO_INT_ROUND(velocity_x_q8_8), false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, Q8_8_TO_INT_ROUND(velocity_y_q8_8), true,  K_FOREVER);
 #elif CONFIG_A320_L6_DIR_INV_X_ONLY
             velocity_x_q8_8 = (-raw_dx * factor_q8_8) >> 8;
             velocity_y_q8_8 = (raw_dy * factor_q8_8) >> 8;
-            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+            input_report_rel(dev, INPUT_REL_X, Q8_8_TO_INT_ROUND(velocity_x_q8_8), false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, Q8_8_TO_INT_ROUND(velocity_y_q8_8), true,  K_FOREVER);
 #elif CONFIG_A320_L6_DIR_INV_Y_ONLY
             velocity_x_q8_8 = (raw_dx * factor_q8_8) >> 8;
             velocity_y_q8_8 = (-raw_dy * factor_q8_8) >> 8;
-            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+            input_report_rel(dev, INPUT_REL_X, Q8_8_TO_INT_ROUND(velocity_x_q8_8), false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, Q8_8_TO_INT_ROUND(velocity_y_q8_8), true,  K_FOREVER);
 #endif
             /* R13: Update inertia with scaled velocity */
             a320_inertia_update_on_touch(&inertia_state, velocity_x_q8_8, velocity_y_q8_8,
@@ -580,8 +612,9 @@ static void a320_poll_work_handler(struct k_work *work)
             int32_t velocity_x_q8_8 = (raw_dx * factor_q8_8) >> 8;
             int32_t velocity_y_q8_8 = (raw_dy * factor_q8_8) >> 8;
 
-            input_report_rel(dev, INPUT_REL_X, (int16_t)velocity_x_q8_8, false, K_FOREVER);
-            input_report_rel(dev, INPUT_REL_Y, (int16_t)velocity_y_q8_8, true,  K_FOREVER);
+            /* Fix 1: Use signed rounding to fix positive-value truncation */
+            input_report_rel(dev, INPUT_REL_X, Q8_8_TO_INT_ROUND(velocity_x_q8_8), false, K_FOREVER);
+            input_report_rel(dev, INPUT_REL_Y, Q8_8_TO_INT_ROUND(velocity_y_q8_8), true,  K_FOREVER);
 
             /* R13: Update inertia with scaled velocity */
             a320_inertia_update_on_touch(&inertia_state, velocity_x_q8_8, velocity_y_q8_8,
