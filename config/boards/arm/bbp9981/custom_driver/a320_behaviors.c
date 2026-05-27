@@ -218,3 +218,99 @@ static const struct behavior_driver_api mkpswap_api = {
 DT_INST_FOREACH_STATUS_OKAY(MKPSWAP_INST)
 
 #endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */
+
+/* ==================================================================
+ *  BT CLEAR BEHAVIOR (&bt_clr)
+ *
+ *  When pressed:
+ *    1. Clears all BLE bonds via zmk_ble_clear_all_bonds()
+ *    2. Flashes keyboard backlight 5 times (100 ms ON / 100 ms OFF)
+ *    3. Restores original backlight brightness
+ *
+ *  Compat: zmk,behavior-bt-clr
+ * ================================================================== */
+
+#undef DT_DRV_COMPAT
+#define DT_DRV_COMPAT zmk_behavior_bt_clr
+
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
+#include <zmk/ble.h>
+#include <zmk/backlight.h>
+
+struct bt_clr_blink_data {
+    struct k_work_delayable blink_work;
+    uint8_t blink_count;
+    uint8_t phase;          /* 0 = OFF phase, 1 = ON phase */
+    uint8_t original_brt;
+    bool in_progress;
+};
+
+static struct bt_clr_blink_data bt_clr_state;
+
+static void bt_clr_blink_handler(struct k_work *work);
+
+static int bt_clr_binding_pressed(const struct zmk_behavior_binding *binding,
+                                   struct zmk_behavior_binding_event event)
+{
+    if (bt_clr_state.in_progress) {
+        LOG_WRN("bt_clr: blink already in progress, ignoring");
+        return ZMK_BEHAVIOR_OPAQUE;
+    }
+
+    /* Step 1: Clear all BLE bonds (synchronous) */
+    LOG_INF("bt_clr: clearing all BLE bonds");
+    zmk_ble_clear_all_bonds();
+
+    /* Step 2: Start backlight blink sequence */
+    bt_clr_state.original_brt = zmk_backlight_get_brt();
+    bt_clr_state.blink_count = 0;
+    bt_clr_state.phase = 1;
+    bt_clr_state.in_progress = true;
+
+    zmk_backlight_set_brt(100);
+    k_work_reschedule(&bt_clr_state.blink_work, K_MSEC(100));
+
+    LOG_INF("bt_clr: blink sequence started (5 cycles)");
+    return ZMK_BEHAVIOR_OPAQUE;
+}
+
+static void bt_clr_blink_handler(struct k_work *work)
+{
+    if (bt_clr_state.phase == 1) {
+        /* ON → OFF */
+        zmk_backlight_set_brt(0);
+        bt_clr_state.phase = 0;
+        k_work_reschedule(&bt_clr_state.blink_work, K_MSEC(100));
+    } else {
+        /* OFF → ON (unless this was the 5th off) */
+        bt_clr_state.blink_count++;
+        if (bt_clr_state.blink_count >= 5) {
+            /* Done: restore original brightness */
+            zmk_backlight_set_brt(bt_clr_state.original_brt);
+            bt_clr_state.in_progress = false;
+            LOG_INF("bt_clr: blink sequence complete, restored brt=%d",
+                    bt_clr_state.original_brt);
+            return;
+        }
+        zmk_backlight_set_brt(100);
+        bt_clr_state.phase = 1;
+        k_work_reschedule(&bt_clr_state.blink_work, K_MSEC(100));
+    }
+}
+
+static int bt_clr_init(const struct device *dev)
+{
+    k_work_init_delayable(&bt_clr_state.blink_work, bt_clr_blink_handler);
+    bt_clr_state.in_progress = false;
+    return 0;
+}
+
+static const struct behavior_driver_api bt_clr_api = {
+    .binding_pressed = bt_clr_binding_pressed,
+};
+
+BEHAVIOR_DT_INST_DEFINE(0, bt_clr_init, NULL, NULL, NULL, POST_KERNEL,
+                        CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &bt_clr_api);
+
+#endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

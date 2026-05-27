@@ -16,6 +16,7 @@ properties:
     enum:
       - mouse
       - scroll
+      - accel
   min-gear:
     type: int
     required: true

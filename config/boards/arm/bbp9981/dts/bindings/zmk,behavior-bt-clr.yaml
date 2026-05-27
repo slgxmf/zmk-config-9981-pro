@@ -1,0 +1,11 @@
+# Copyright (c) 2025 ZitaoTech
+# SPDX-License-Identifier: MIT
+
+description: >
+  Clear all Bluetooth bonds and flash backlight 5 times as confirmation.
+  Uses the full-board backlight (zmk_keyboard_backlight chosen node) to
+  rapidly blink 5 times, then restores the original brightness.
+
+compatible: "zmk,behavior-bt-clr"
+
+include: zero_param.yaml
