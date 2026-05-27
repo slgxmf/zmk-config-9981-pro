@@ -97,6 +97,11 @@ static uint8_t scroll_samples = 0;
  *  1b. FILTER STATE (removed — zero-filter per Scheme B)
  * ================================================================== */
 
+/* ---- LPF state for layer-10 experimental filter ---- */
+static int16_t lpf_v2_state_x = 0;
+static int16_t lpf_v2_state_y = 0;
+static int16_t accel_v2_prev_x = 0;
+static int16_t accel_v2_prev_y = 0;
 /* ==================================================================
  *  2. DATA & CONFIG STRUCTS
  * ================================================================== */
@@ -132,6 +137,41 @@ static inline int clamp_int(int val, int lo, int hi)
 }
 
 #define Q8_8_TO_INT_ROUND(v)  (((v) + ((v) >= 0 ? 128 : -128)) >> 8)
+
+/* ---- Layer-10 experimental filter (v2) ---- */
+#ifndef CONFIG_A320_FILTER_LPF_ALPHA
+#define CONFIG_A320_FILTER_LPF_ALPHA 224
+#endif
+#ifndef CONFIG_A320_FILTER_ACCEL_GAIN
+#define CONFIG_A320_FILTER_ACCEL_GAIN 32
+#endif
+
+/*
+ * Experimental filter v2 for layer 10 (L_RSV_A).
+ * Parameters:
+ *   - No Baseline EMA (confirmed harmful for delta sensors)
+ *   - LPF α=208 (≈ 80% sensor weight, light smoothing)
+ *   - No Rate Limiter
+ *   - Accel Comp gain=16 (≈ 6% micro-gain to reduce perceived lag)
+ *   - First touch init: LPF states seeded from sensor reading
+ *   - Release: all states zeroed (done by caller)
+ */
+static void a320_filter_pipeline_v2(int16_t *dx, int16_t *dy)
+{
+    /* Stage 1: LPF α=208 (80% sensor weight) */
+    lpf_v2_state_x += (int16_t)(((*dx - lpf_v2_state_x) * 208) >> 8);
+    lpf_v2_state_y += (int16_t)(((*dy - lpf_v2_state_y) * 208) >> 8);
+    *dx = lpf_v2_state_x;
+    *dy = lpf_v2_state_y;
+
+    /* Stage 2: Accel Comp gain=16 (6.25% micro-gain, reduces perceived lag) */
+    int16_t accel_dx = *dx - accel_v2_prev_x;
+    int16_t accel_dy = *dy - accel_v2_prev_y;
+    *dx += (int16_t)((accel_dx * 16) >> 8);
+    *dy += (int16_t)((accel_dy * 16) >> 8);
+    accel_v2_prev_x = *dx;
+    accel_v2_prev_y = *dy;
+}
 
 /* === Build #37 base-speed table (Q8.8) ===
  *   base = 0.02 + gear² * 0.03  (Build #37 formula)
@@ -235,6 +275,24 @@ static void a320_poll_work_handler(struct k_work *work)
             return;
         }
 
+        /* ---- First-touch: init v2 filter state from sensor reading ---- */
+        if (first_touch) {
+            lpf_v2_state_x = raw_dx;
+            lpf_v2_state_y = raw_dy;
+            first_touch = false;
+        }
+        if (!touched) {
+            /* Release: zero all v2 filter state */
+            lpf_v2_state_x = 0;
+            lpf_v2_state_y = 0;
+            accel_v2_prev_x = 0;
+            accel_v2_prev_y = 0;
+        }
+
+        /* ---- Save unfiltered values (layers 0-9, 11+ use zero-filter) ---- */
+        int16_t unfiltered_dx = raw_dx;
+        int16_t unfiltered_dy = raw_dy;
+
         /* ---- Query current active layer ---- */
         uint8_t active_layer = zmk_keymap_highest_layer_active();
 
@@ -245,6 +303,11 @@ static void a320_poll_work_handler(struct k_work *work)
                 scroll_acc_x = 0;
                 scroll_acc_y = 0;
                 scroll_samples = 0;
+                /* Reset v2 filter state on layer switch */
+                lpf_v2_state_x = 0;
+                lpf_v2_state_y = 0;
+                accel_v2_prev_x = 0;
+                accel_v2_prev_y = 0;
                 first_touch = true;
             }
             prev_active_layer = active_layer;
@@ -360,11 +423,21 @@ static void a320_poll_work_handler(struct k_work *work)
 
         } else {
 
-            /* ==============================================
-             *  NORMAL MOUSE MODE  —  Build #37 style
-             *  raw_dx/dy → acceleration → input_report_rel
-             *  NO filter pipeline (zero-filter)
-             * ============================================== */
+            /* ================================================================
+             *  NORMAL MODE  —  nonlinear dynamic accel
+             *
+             *  Filter routing by layer:
+             *    Layer 10 (L_RSV_A) : experimental v2 filter
+             *                         (LPF α=208, Accel Comp gain=16)
+             *    Layers 0-9, 11+    : zero filtering (raw sensor only)
+             * ================================================================ */
+            int16_t filtered_dx = raw_dx;
+            int16_t filtered_dy = raw_dy;
+            if (active_layer == 10) {
+                /* Layer 10: apply experimental v2 filter */
+                a320_filter_pipeline_v2(&filtered_dx, &filtered_dy);
+            }
+            /* Layers 0-9, 11+: zero filtering (filtered_dx stays = raw_dx, raw_dy) */
             int16_t max_raw = MAX(abs(raw_dx), abs(raw_dy));
 
             int32_t factor_q8_8;
@@ -380,15 +453,17 @@ static void a320_poll_work_handler(struct k_work *work)
                 factor_q8_8 = (base_q8_8 * accel_q8_8) >> 8;
             }
 
-            int32_t vel_x = (raw_dx * factor_q8_8) >> 8;  /* Q0 pixel output */
-            int32_t vel_y = (raw_dy * factor_q8_8) >> 8;
+            int32_t vel_x = (filtered_dx * factor_q8_8) >> 8;
+            int32_t vel_y = (filtered_dy * factor_q8_8) >> 8;
 
             /* Direct report — no filter, no LPF, no rate limiter */
             input_report_rel(dev, INPUT_REL_X, Q8_8_TO_INT_ROUND(vel_x), false, K_FOREVER);
             input_report_rel(dev, INPUT_REL_Y, Q8_8_TO_INT_ROUND(vel_y), true,  K_FOREVER);
 
-            /* Inertia: feed post-accel velocity in Q8.8 */
-            a320_inertia_update_on_touch(&inertia_state, vel_x << 8, vel_y << 8,
+            /* Inertia: use unfiltered velocity (BH-H4: skip LPF/Accel Comp for inertia) */
+            int32_t inertia_vx = (raw_dx * factor_q8_8) >> 8;
+            int32_t inertia_vy = (raw_dy * factor_q8_8) >> 8;
+            a320_inertia_update_on_touch(&inertia_state, inertia_vx << 8, inertia_vy << 8,
                                          inertia_allowed);
             touched = true;
         }
@@ -423,6 +498,11 @@ static void a320_poll_work_handler(struct k_work *work)
         first_touch = true;
         touched = false;
 
+        /* Reset v2 filter state on touch release */
+        lpf_v2_state_x = 0;
+        lpf_v2_state_y = 0;
+        accel_v2_prev_x = 0;
+        accel_v2_prev_y = 0;
     }
 
     k_work_reschedule(&data->poll_work, K_MSEC(CONFIG_A320_POLL_INTERVAL_MS));
