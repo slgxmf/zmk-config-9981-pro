@@ -86,3 +86,11 @@ config A320_FILTER_ENABLE_KEY
 	default "yes"
 
 endmenu
+
+config ZMK_BLE_BT_CLR_LED_FEEDBACK
+	bool "Enable backlight flash feedback when BLE bonds are cleared"
+	default y
+	help
+	  When enabled, pressing the BT_CLR key will flash the keyboard
+	  backlight 5 times as confirmation that all BLE pairings have
+	  been cleared.
